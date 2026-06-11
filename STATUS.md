@@ -234,8 +234,9 @@ cov 0.62), contact shadows (?ablate=contact to A/B), black facets root-caused to
   normals (#8); card grazing flatness (#5, hero ring will help); DELTA Ph-2
   #4 (2nd cloud layer, Ph 6), #10 (god rays, Ph 6); kettle ponds (Ph 6);
   PCSS receive cost at ground views (~20-30 ms — Phase 7).
-- Phase 5 leftovers (small): hero-hybrid ring 0 for nearest ~12 trees;
-  per-cascade shadow culling (currently view-frustum lists feed cascades).
+- Phase 5 leftovers (small): per-cascade shadow culling (view-frustum lists
+  feed cascades). Hero-hybrid ring 0 is DONE (committed: 24 hero builds,
+  ≤26 m, dithered R0↔R1, veg.hero HUD counter) — do not redo.
 
 ## Key decisions log
 
