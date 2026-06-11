@@ -83,8 +83,8 @@ import type { WorldSeed } from '../core/Seed';
 const GRASS_GRID = 3072;
 const GRASS_CELL = 0.0858; // m → ±132 m ring, ~136 slots/m² (800k-blade floor)
 const GRASS_R = 124;
-const G_NEAR = 24;
-const G_MID = 55;
+const G_NEAR = 30;
+const G_MID = 70;
 const GRASS_CAPS = [327680, 655360, 1572864]; // near/mid/far compact regions
 
 const DEB_GRID = 448;
@@ -152,6 +152,54 @@ function litterQuad(): BufferGeometry {
   );
   g.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
   g.setIndex([0, 2, 1, 0, 3, 2]);
+  return g;
+}
+
+/**
+ * N-blade clump in one instance — the SOTA near-grass move: per-pixel blade
+ * overlap is what reads as "lush", and single thin blades can't do it at
+ * walking distance no matter the density. Deterministic mini-rng; per-cell
+ * variety still comes from the instance transform/hash.
+ */
+function bladeClump(blades: number, segs: number): BufferGeometry {
+  let s = 1234567 + blades * 77 + segs * 13;
+  const rnd = (): number => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const uvA: number[] = [];
+  const idx: number[] = [];
+  for (let b = 0; b < blades; b++) {
+    const base = grassBladeGeometry(segs);
+    const yaw = rnd() * Math.PI * 2;
+    const c = Math.cos(yaw);
+    const sn = Math.sin(yaw);
+    const ox = (rnd() - 0.5) * 0.16;
+    const oz = (rnd() - 0.5) * 0.16;
+    const hk = 0.62 + rnd() * 0.65;
+    const lean = (rnd() - 0.5) * 0.42;
+    const p = base.attributes.position as BufferAttribute;
+    const nA = base.attributes.normal as BufferAttribute;
+    const uA = base.attributes.uv as BufferAttribute;
+    const v0 = pos.length / 3;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i) * 1.25;
+      const y = p.getY(i) * hk;
+      const z = p.getZ(i);
+      pos.push(x * c + z * sn + ox + lean * y * c, y, z * c - x * sn + oz + lean * y * sn);
+      nrm.push(nA.getX(i) * c + nA.getZ(i) * sn, nA.getY(i), nA.getZ(i) * c - nA.getX(i) * sn);
+      uvA.push(uA.getX(i), uA.getY(i));
+    }
+    const ix = base.index as BufferAttribute;
+    for (let i = 0; i < ix.count; i++) idx.push(v0 + ix.getX(i));
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
+  g.setAttribute('normal', new BufferAttribute(new Float32Array(nrm), 3));
+  g.setAttribute('uv', new BufferAttribute(new Float32Array(uvA), 2));
+  g.setIndex(idx);
   return g;
 }
 
@@ -422,7 +470,7 @@ export class GroundRing {
     // ---------------- draws -------------------------------------------------------
     const draws: { geo: BufferGeometry; mat: MeshStandardNodeMaterial; g: number }[] = [];
 
-    const grassGeos = [grassBladeGeometry(4), grassBladeGeometry(2), tuftGeometry()];
+    const grassGeos = [bladeClump(4, 4), bladeClump(2, 2), tuftGeometry()];
     const grassFades: [number | null, number | null][] = [
       [null, G_NEAR],
       [G_NEAR, G_MID],

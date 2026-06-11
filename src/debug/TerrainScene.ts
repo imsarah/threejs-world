@@ -14,6 +14,7 @@ import { Forests } from '../vegetation/Forests';
 import { GroundRing } from '../vegetation/GroundRing';
 import { buildVegLibrary } from '../vegetation/VegLibrary';
 import { updateSunUniforms } from '../render/VegMaterials';
+import { buildCanopyShell } from '../world/CanopyShell';
 import { Heightfield } from '../world/Heightfield';
 import { buildTerrainShadowProxy } from '../world/ShadowProxy';
 import { TerrainTiles } from '../world/TerrainTiles';
@@ -125,6 +126,11 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
         ring.update(engine.renderer, engine.camera);
         Object.assign(engine.stats.counters, ring.counterSnapshot());
       });
+    }
+
+    // far forests: aggregate canopy shell beyond the impostor mid-band
+    if (!ablate.has('shell')) {
+      engine.scene.add(buildCanopyShell(hf, canopyTex));
     }
   }
 

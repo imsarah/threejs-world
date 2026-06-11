@@ -59,11 +59,12 @@ import { instanceVeg, type RingFade } from '../render/VegInstance';
 import type { NF, NI, NU, NV3, NV4 } from '../gpu/TSLTypes';
 import type { VegLib } from './VegLibrary';
 
-// ring distances (m) + dither bands
-const R1_FAR = 110;
-const BAND1 = 12;
-const R2_FAR = 340;
-const BAND2 = 30;
+// ring distances (m) + dither bands (user feedback: transitions read too
+// close — full-card trees hold to 150 m, impostors start at 460 m)
+const R1_FAR = 150;
+const BAND1 = 14;
+const R2_FAR = 460;
+const BAND2 = 36;
 const EX_R1_FAR = 120;
 const EX_BAND = 15;
 

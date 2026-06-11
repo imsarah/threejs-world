@@ -111,6 +111,9 @@ export function barkTexturedMaterial(tex: {
   mat.aoNode = a.w;
   mat.roughnessNode = b.z;
   mat.metalness = 0;
+  // tubes are closed — DoubleSide costs ~nothing and guarantees a trunk can
+  // never read hollow regardless of LOD/dither state ("inside-out" report)
+  mat.side = DoubleSide;
   return mat;
 }
 

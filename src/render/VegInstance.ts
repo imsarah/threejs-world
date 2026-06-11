@@ -12,6 +12,7 @@
  * likewise skipped for normals.
  */
 
+import { DoubleSide } from 'three';
 import type { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { StorageBufferNode } from 'three/webgpu';
 import {
@@ -19,6 +20,7 @@ import {
   Fn,
   cameraPosition,
   float,
+  frontFacing,
   instanceIndex,
   interleavedGradientNoise,
   mix,
@@ -178,6 +180,12 @@ export function instanceVeg(
     applyDitherFade(mat, dist, f);
   }
   applyInstanceTint(mat, slot, bind.tint ?? 0.12);
+
+  // ?facedbg=1 — winding diagnosis: front faces green, back faces red
+  if (new URLSearchParams(window.location.search).get('facedbg') === '1') {
+    mat.colorNode = frontFacing.select(vec4(0, 1, 0, 1), vec4(1, 0, 0, 1));
+    mat.side = DoubleSide;
+  }
 
   // Shadow-pass contract: three derives the caster's alpha from colorNode.a
   // and copies alphaTest over — a vec3 colorNode yields a bogus alpha below
