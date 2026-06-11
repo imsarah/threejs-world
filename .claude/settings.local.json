@@ -55,7 +55,8 @@
       "Bash(sed -n '154,160p;243,247p' src/vegetation/Understory.ts)",
       "Bash(sed -n '15,21p' src/vegetation/Deadfall.ts)",
       "Bash(sed -n '141,158p' src/vegetation/RockBuilder.ts)",
-      "Bash(sed -n '55,75p;110,118p' src/vegetation/Impostors.ts)"
+      "Bash(sed -n '55,75p;110,118p' src/vegetation/Impostors.ts)",
+      "Bash(git commit -q -m 'Grass ring density to spec floor \\(136 slots/m², full-density tuft band, soft ring edge\\), greener blade ramp, fewer dry patches; ?pitch camera via initialPose hook \\(FlyCamera was discarding scene lookAt pitch\\) *)"
     ]
   }
 }

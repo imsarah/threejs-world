@@ -164,12 +164,11 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       const x = Number(q.get('x') ?? 600);
       const z = Number(q.get('z') ?? 900);
       const yaw = Number(q.get('yaw') ?? 2.4); // rad; 0 = looking −z (north)
-      const pitch = Number(q.get('pitch') ?? NaN); // rad; negative = down
+      const pitch = Number(q.get('pitch') ?? -0.04); // rad; negative = down
       const y = hf.heightAtCpu(x, z) + alt;
+      // the fly camera doesn't exist yet — main applies this after rigging
+      ctx.hooks.initialPose = { p: [x, y, z], yaw, pitch };
       engine.camera.position.set(x, y, z);
-      const dy = Number.isFinite(pitch) ? Math.sin(pitch) * 100 : -4;
-      const dh = Number.isFinite(pitch) ? Math.cos(pitch) * 100 : 100;
-      engine.camera.lookAt(x - Math.sin(yaw) * dh, y + dy, z - Math.cos(yaw) * dh);
     } else {
       engine.camera.position.set(1500, 1000, 1900);
       engine.camera.lookAt(0, 350, -300);

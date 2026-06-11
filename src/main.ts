@@ -62,6 +62,8 @@ async function boot(): Promise<void> {
   if (params.cam !== null) {
     const pose = parseCamString(params.cam);
     if (pose) fly.setPose(pose);
+  } else if (hooks.initialPose) {
+    fly.setPose(hooks.initialPose);
   }
 
   new Hud(engine, params);

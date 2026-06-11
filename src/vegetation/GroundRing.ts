@@ -80,12 +80,12 @@ import {
 import { buildRock } from './RockBuilder';
 import type { WorldSeed } from '../core/Seed';
 
-const GRASS_GRID = 2560;
-const GRASS_CELL = 0.103; // m → ±132 m ring, ~94 slots/m² (800k-blade floor)
+const GRASS_GRID = 3072;
+const GRASS_CELL = 0.0858; // m → ±132 m ring, ~136 slots/m² (800k-blade floor)
 const GRASS_R = 124;
 const G_NEAR = 24;
 const G_MID = 55;
-const GRASS_CAPS = [327680, 655360, 786432]; // near/mid/far compact regions
+const GRASS_CAPS = [327680, 655360, 1572864]; // near/mid/far compact regions
 
 const DEB_GRID = 448;
 const DEB_CELL = 0.3; // ±67 m ring
@@ -317,7 +317,7 @@ export class GroundRing {
       const canopy = canopyAt(canopyTex, wpos);
       // soft bank margin — a hard depth cut prints a razor arc along streams
       const bank = float(1).sub(smoothstep(0.08, 0.28, fl.z));
-      const dens = byBio(bioId, [0.04, 0.5, 0.42, 0.5, 1.0, 0.85])
+      const dens = byBio(bioId, [0.04, 0.55, 0.5, 0.55, 1.3, 1.0])
         .mul(bank)
         .mul(bio.z.mul(0.85).add(0.15))
         .mul(float(1).sub(bio.w.mul(0.7)))
@@ -325,8 +325,8 @@ export class GroundRing {
         .mul(float(1).sub(canopy.mul(0.45)))
         .mul(float(1).sub(smoothstep(0.55, 0.95, ns.w)))
         .mul(fl.x.mul(0.35).add(0.75));
-      const edge = float(1).sub(smoothstep(GRASS_R * 0.55, GRASS_R, dist));
-      const lodK = dist.lessThan(G_MID).select(float(1), float(0.3));
+      const edge = float(1).sub(smoothstep(GRASS_R * 0.85, GRASS_R, dist));
+      const lodK = float(1); // tufts are 4 tris — full density to the ring edge
       If(cellHash(wc, salt ^ 0x77a1).greaterThanEqual(dens.mul(edge).mul(lodK)), () => {
         Return();
       });
@@ -529,8 +529,8 @@ export class GroundRing {
 
     const t = uv().y as unknown as NF;
     const fresh = mix(
-      vec3(0.022, 0.06, 0.012),
-      vec3(0.072, 0.135, 0.03),
+      vec3(0.02, 0.062, 0.011),
+      vec3(0.065, 0.148, 0.028),
       t.mul(t),
     ) as unknown as NV3;
     const dry = mix(
@@ -538,7 +538,7 @@ export class GroundRing {
       vec3(0.21, 0.17, 0.075),
       t,
     ) as unknown as NV3;
-    const dryK = smoothstep(0.55, 0.85, patch.x);
+    const dryK = smoothstep(0.7, 0.95, patch.x);
     let albedo = mix(fresh, dry, dryK) as unknown as NV3;
     albedo = albedo.mul(patch.y.sub(0.5).mul(0.3).add(1)) as unknown as NV3;
     mat.colorNode = albedo;

@@ -50,6 +50,9 @@ export interface LaasHooks {
   /** tooling control surface */
   setPose: ((pose: CamPose) => void) | null;
   getPose: (() => CamPose) | null;
+  /** scene-requested spawn pose (?alt/x/z/yaw/pitch) — main applies it once
+   *  the fly camera exists (scenes build BEFORE the camera rig) */
+  initialPose: CamPose | null;
   setTimeOfDay: ((t: number) => void) | null;
   /** settle frames (TAA/temporal effects) then resolve — call before screenshots */
   settle: ((frames?: number) => Promise<void>) | null;
@@ -71,6 +74,7 @@ export function initHooks(): LaasHooks {
     progressMsg: 'boot',
     setPose: null,
     getPose: null,
+    initialPose: null,
     setTimeOfDay: null,
     settle: null,
   };
