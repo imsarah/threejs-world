@@ -57,7 +57,14 @@
       "Bash(sed -n '141,158p' src/vegetation/RockBuilder.ts)",
       "Bash(sed -n '55,75p;110,118p' src/vegetation/Impostors.ts)",
       "Bash(git commit -q -m 'Grass ring density to spec floor \\(136 slots/m², full-density tuft band, soft ring edge\\), greener blade ramp, fewer dry patches; ?pitch camera via initialPose hook \\(FlyCamera was discarding scene lookAt pitch\\) *)",
-      "Bash(git commit -q -m 'Aggregate-nanite grass continuity \\(user mandate\\): continuous distance thinning conserved by 1/sqrt blade widening \\(no LOD bands\\), ring to 155m, 12m crossfades, narrower tufts; terrain grass splat = final LOD \\(blade-matched palette + same 1.6m patch noise\\); tree density up \\(conifer 0.8/karst 0.85/meadow 0.06\\), rockExp gates softened *)"
+      "Bash(git commit -q -m 'Aggregate-nanite grass continuity \\(user mandate\\): continuous distance thinning conserved by 1/sqrt blade widening \\(no LOD bands\\), ring to 155m, 12m crossfades, narrower tufts; terrain grass splat = final LOD \\(blade-matched palette + same 1.6m patch noise\\); tree density up \\(conifer 0.8/karst 0.85/meadow 0.06\\), rockExp gates softened *)",
+      "Bash(sed -n 38,64p src/vegetation/RockBuilder.ts)",
+      "Bash(sed -n 196,240p src/gpu/passes/Scatter.ts)",
+      "Bash(node *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebSearch",
+      "Bash(sed -n 348,360p src/render/PostStack.ts)",
+      "Bash(sed -n 1,60p node_modules/three/examples/jsm/tsl/display/TRAANode.js)"
     ]
   }
 }

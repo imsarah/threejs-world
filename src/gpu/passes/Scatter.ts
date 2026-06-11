@@ -653,16 +653,34 @@ export async function runScatter(
     const decay = mJit
       .greaterThan(0.62)
       .select(float(2), mJit.greaterThan(0.35).select(float(1), float(0)));
+    const isRock = cls.greaterThanEqual(int(VegClass.Boulder));
+    // boulder/slab variants are context-keyed like StoneL: 0/1 pale bedrock
+    // blocks on exposed rock, scree slopes, or dry pale soil (everywhere
+    // the splat is pale — they must match the ground), 2/3 dark mossy
+    // forest rocks
+    const paleCtx = s.rockExp
+      .greaterThan(0.35)
+      .or(s.slope.greaterThan(0.42))
+      .or(s.moisture.lessThan(0.32));
+    const rockV = cellHash(cell, sE ^ 0x44d7)
+      .mul(2)
+      .floor()
+      .min(1)
+      .add(paleCtx.select(float(0), float(2)));
     const variant = cls
       .equal(int(VegClass.Log))
-      .select(decay, cellHash(cell, sE ^ 0x44d7).mul(4).floor().min(3));
+      .select(
+        decay,
+        isRock.select(rockV, cellHash(cell, sE ^ 0x44d7).mul(4).floor().min(3)),
+      );
 
-    const isRock = cls.greaterThanEqual(int(VegClass.Boulder));
     const scale = isRock.select(
       h2.y.pow(2).mul(1.9).add(0.5),
       h2.y.mul(0.6).add(0.7),
     );
-    const sink = isRock.select(scale.mul(0.28), float(0.08));
+    // rocks bed deeper on slopes — a perched block on an incline floats
+    const bed = s.slope.mul(0.9).add(1);
+    const sink = isRock.select(scale.mul(0.28).mul(bed), float(0.08));
     const yaw = cellHash(cell, sE ^ 0x2a6b).mul(TAU);
     const idF = float(cls).mul(8).add(variant);
 
@@ -708,48 +726,82 @@ export async function runScatter(
 
     const canopy = clumpField(wpos, sT ^ 0x51f3);
     const streamK = smoothstep(0.05, 0.3, s.riverDepth);
-    // scree: moderate-steep slopes shed stones; talus accumulates below rock
-    const scree = smoothstep(0.42, 0.8, s.slope).mul(
-      float(1).sub(smoothstep(0.95, 1.25, s.slope)),
-    );
+    // angle of repose: loose rock can't rest above ~42° — anything clinging
+    // to steeper faces reads as stuck-on blobs (user feedback: "random
+    // protruding circles along cliffs")
+    const repose = float(1).sub(smoothstep(0.72, 0.98, s.slope));
+    // talus: march uphill — steep ground above sheds rock onto this site,
+    // so stones concentrate in fans BELOW cliffs rather than on them
+    const upLen = s.nrmXZ.length().max(0.02);
+    const up = s.nrmXZ.div(upLen).negate();
+    const h8 = hf.sampleHeight(wpos.add(up.mul(8)));
+    const h18 = hf.sampleHeight(wpos.add(up.mul(18)));
+    const riseNear = h8.sub(s.h).div(8);
+    const riseFar = h18.sub(h8).div(10);
+    const cliffAbove = smoothstep(0.7, 1.3, riseNear.max(riseFar));
+    // shared rockiness clumps: one field gates ALL size classes, so big
+    // blocks sit inside aprons of smaller fragments with bare gaps between
+    // (real scree is patchy and size-mixed, never uniform speckle)
+    const patch = clumpField(wpos, sS ^ 0x77aa).mul(0.78).add(0.22);
+    const scree = smoothstep(0.42, 0.8, s.slope);
     const stoneBase = byBiome(s.bioId, [0.55, 0.4, 0.26, 0.32, 0.14, 0.18])
       .mul(
         s.rockExp
           .mul(0.85)
-          .add(scree.mul(0.7))
+          .add(scree.mul(0.85))
           .add(streamK.mul(0.9))
-          .add(0.12),
+          .add(cliffAbove.mul(1.15))
+          .add(0.16),
       )
+      .mul(patch)
+      .mul(repose)
       .mul(float(1).sub(s.snow.mul(0.85)));
-    const branchW = canopy.mul(0.55).mul(
+    // branches need ground that holds them — steep bare slopes grew
+    // floating white sticks (user-visible artifact)
+    const branchFlat = float(1).sub(smoothstep(0.45, 0.75, s.slope));
+    const branchW = canopy.mul(0.6).mul(
       byBiome(s.bioId, [0, 0.2, 1, 1, 0.3, 0.7]),
-    );
+    ).mul(branchFlat);
     const accept = stoneBase.add(branchW).min(1);
     If(cellHash(cell, sS ^ 0x71f1).greaterThanEqual(accept), () => {
       Return();
     });
 
-    // class pick: branch vs stone, stones split L/M/S by size budget
+    // class pick: branch vs stone, stones split L/M/S by size budget.
+    // Stones embed deeper on slopes (a perched sphere on an incline reads
+    // as a stuck-on blob; a bedded one reads as an outcrop).
+    const bed = s.slope.mul(0.9).add(1);
     const r = cellHash(cell, sS ^ 0x2e2e).mul(stoneBase.add(branchW));
     const h2 = cellHash2(cell, sS ^ 0x6b6b);
     const cls = int(VegClass.Branch).toVar();
     const scale = float(1).toVar();
     const sink = float(0.05).toVar();
+    const variant = cellHash(cell, sS ^ 0x5c5c).mul(4).floor().min(3).toVar();
     If(r.lessThan(stoneBase), () => {
       const sr = h2.x;
       If(sr.lessThan(0.13), () => {
         cls.assign(int(VegClass.StoneL));
         scale.assign(h2.y.pow(1.7).mul(1.6).add(0.6)); // 0.6–2.2 m
-        sink.assign(scale.mul(0.3));
+        sink.assign(scale.mul(0.3).mul(bed));
+        // variant by context: 0/1 pale faceted talus on scree/exposed rock/
+        // dry pale soil (matches the pale splat), 2/3 dark rounded stones
+        // in streambeds and on moist mossy forest floor
+        const paleCtx = s.rockExp
+          .greaterThan(0.35)
+          .or(s.slope.greaterThan(0.42))
+          .or(s.moisture.lessThan(0.32))
+          .and(streamK.lessThan(0.35));
+        const vr = cellHash(cell, sS ^ 0x1d2d).mul(2).floor().min(1);
+        variant.assign(vr.add(paleCtx.select(float(0), float(2))));
       }).Else(() => {
         If(sr.lessThan(0.45), () => {
           cls.assign(int(VegClass.StoneM));
           scale.assign(h2.y.mul(0.4).add(0.2)); // 0.2–0.6 m
-          sink.assign(scale.mul(0.26));
+          sink.assign(scale.mul(0.26).mul(bed));
         }).Else(() => {
           cls.assign(int(VegClass.StoneS));
           scale.assign(h2.y.mul(0.14).add(0.06)); // 6–20 cm
-          sink.assign(scale.mul(0.22));
+          sink.assign(scale.mul(0.22).mul(bed));
         });
       });
     }).Else(() => {
@@ -758,7 +810,6 @@ export async function runScatter(
     });
 
     const yaw = cellHash(cell, sS ^ 0x3d3d).mul(TAU);
-    const variant = cellHash(cell, sS ^ 0x5c5c).mul(4).floor().min(3);
     const idF = float(cls).mul(8).add(variant);
     append(
       stoneCount,

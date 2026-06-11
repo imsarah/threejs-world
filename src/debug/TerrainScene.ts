@@ -49,6 +49,8 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   const sunSky = new SunSky(engine, params.timeOfDay);
   await sunSky.init(engine.renderer);
   (engine as unknown as { sunSky?: SunSky }).sunSky = sunSky;
+  // tooling probe handle (tools/probe-state.ts) — light/scene state triage
+  (window as unknown as { __laasDbg?: unknown }).__laasDbg = { engine, sunSky };
 
   // irradiance probe field (Phase 3 GI)
   ctx.progress(0.945, 'gi: gathering irradiance probes');
@@ -141,7 +143,14 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   await clouds.init(engine.renderer);
 
   // 4-cascade CSM + PCSS contact hardening; cloud shadows gate the sun term
-  setupSunShadows(sunSky.sun, engine.camera, (wxz) => clouds.shadowAt(wxz));
+  const shadowRig = setupSunShadows(sunSky.sun, engine.camera, (wxz) =>
+    clouds.shadowAt(wxz),
+  );
+  (window as unknown as { __laasDbg?: Record<string, unknown> }).__laasDbg = {
+    engine,
+    sunSky,
+    shadowRig,
+  };
 
   // HDR post stack: aerial perspective, clouds, GTAO, TRAA, bloom, exposure, grade
   ctx.progress(0.98, 'post: building pipeline');

@@ -102,11 +102,20 @@ export function setupSunShadows(
     sun.castShadow = false;
     return { csm: null as unknown as CSMShadowNode };
   }
+  const maxFar = opts?.maxFar ?? 3200;
+  const lightMargin = opts?.lightMargin ?? 700;
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   sun.shadow.bias = -0.00012;
   sun.shadow.normalBias = 2.2;
   sun.shadow.radius = 1.15;
+  // CSMShadowNode CLONES this shadow per cascade — its camera near/far are
+  // inherited as the cascade depth range. The DirectionalLight default
+  // (near .5, far 500) is shorter than the lightMargin alone, so every
+  // cascade rendered an EMPTY map: zero shadows anywhere, no errors (the
+  // official webgpu_shadowmap_csm example sets these explicitly).
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = lightMargin + maxFar * 2.2;
 
   if (!ablate.has('pcss')) {
     const filter = cloudShadow
@@ -120,12 +129,43 @@ export function setupSunShadows(
 
   const csm = new CSMShadowNode(sun, {
     cascades: 4,
-    maxFar: opts?.maxFar ?? 3200,
+    maxFar,
     mode: 'practical',
-    lightMargin: opts?.lightMargin ?? 700,
+    lightMargin,
   });
   csm.fade = true;
   (sun.shadow as unknown as { shadowNode: unknown }).shadowNode = csm;
+
+  // CSMShadowNode contract: the APP must call updateFrustums() after camera
+  // changes. Two traps bit us (no-shadows-anywhere, user-reported twice):
+  // (1) its lazy _init samples camera.projectionMatrix at first material
+  // build — under TRAA that matrix is mid-jitter (setViewOffset) and at boot
+  // can be degenerate → NaN cascade extents cached forever; (2) nothing ever
+  // recomputes them. Refresh with the jitter STRIPPED, verify the extents
+  // came out finite, and retry until they do; re-run on resize.
+  const extentsOk = (): boolean => {
+    const l0 = (
+      csm as unknown as { lights?: { shadow?: { camera?: { left?: number } } }[] }
+    ).lights?.[0]?.shadow?.camera?.left;
+    return typeof l0 === 'number' && Number.isFinite(l0);
+  };
+  const refresh = (): void => {
+    const cam = (csm as unknown as { camera: PerspectiveCamera | null }).camera;
+    if (!cam) return;
+    // strip TRAA's per-frame jitter offset before deriving cascade frusta —
+    // TRAA re-applies it on its next updateBefore
+    if ((cam as unknown as { view?: { enabled?: boolean } }).view?.enabled) {
+      cam.clearViewOffset();
+    }
+    cam.updateProjectionMatrix();
+    csm.updateFrustums();
+  };
+  window.addEventListener('resize', refresh);
+  const armRefresh = (): void => {
+    refresh();
+    if (!extentsOk()) requestAnimationFrame(armRefresh);
+  };
+  requestAnimationFrame(armRefresh);
   void camera;
   return { csm };
 }

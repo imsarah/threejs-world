@@ -21,6 +21,7 @@ import {
   deadwoodMaterial,
   flowerMaterial,
   foliageCardMaterial,
+  foliageMaterial,
   rockMaterial,
 } from '../render/VegMaterials';
 import { buildLog, buildStump, type DecayState } from './Deadfall';
@@ -29,7 +30,7 @@ import { twigGeometry } from './GroundCover';
 import { captureImpostor, type ImpostorAtlas, type ImpostorPart } from './Impostors';
 import { buildRock } from './RockBuilder';
 import { TREE_SPECIES } from './Species';
-import { buildTree } from './TreeBuilder';
+import { buildTree, type HeroDiet } from './TreeBuilder';
 import {
   buildFern,
   buildFlower,
@@ -50,6 +51,8 @@ export interface PoolPart {
 export interface VegPool {
   cls: number;
   variant: number;
+  /** hero ring (trees only): full bark + cards + real mesh leaves, ≤26 m */
+  r0?: PoolPart[] | null;
   r1: PoolPart[] | null;
   r2: PoolPart[] | null;
   trisR1: number;
@@ -58,6 +61,24 @@ export interface VegPool {
   height: number;
   radius: number;
 }
+
+/**
+ * Hero-ring tri budgets per species (spec floor: hero tree ≥100k tris for the
+ * canopy species — karst gnarl and snags are small/leafless by nature).
+ * Measured by tools/herotris.ts; mesh leaves carry the detail, bark radial
+ * segs dieted where twig tube counts explode (beech: 24k anchors).
+ */
+export const HERO_DIETS: Record<string, HeroDiet> = {
+  // cards stay UNTHINNED at hero range: thinning enlarges the survivors
+  // (sqrt-coverage rule) and a 1.65×-size card 4 m away is a giant flat
+  // sheet — full-count original-size cards + mesh leaves is the gallery look
+  spruce: { meshAnchorTarget: 850, barkK: 0.8 },
+  pine: { meshAnchorTarget: 350, barkK: 0.8 },
+  beech: { meshAnchorTarget: 2200, barkK: 0.5 },
+  birch: { meshAnchorTarget: 4000, barkK: 1 },
+  karst: { meshAnchorTarget: 4000, barkK: 1.1 },
+  snag: { barkK: 1.3 },
+};
 
 export interface VegLib {
   pools: VegPool[];
@@ -163,8 +184,28 @@ export async function buildVegLibrary(
     for (let v = 0; v < TREE_VARIANTS; v++) {
       const label = `veg/${sp.id}/${v}`;
       const inst = variantInstance(seed, sp.id, v);
+      // hero ring: full tube hierarchy + thinned cards + REAL mesh leaves.
+      // Cards stay in the hero so the R0↔R1 swap only adds leaf geometry —
+      // the painted silhouette never changes (no pop).
+      const t0 = buildTree(sp, seed.rng(label), {
+        lod: 0,
+        inst,
+        foliageMode: 'hybrid',
+        hero: HERO_DIETS[sp.id] ?? { cardTarget: 1500, meshAnchorTarget: 1200 },
+      });
       const t1 = buildTree(sp, seed.rng(label), { lod: 1, inst });
       const t2 = buildTree(sp, seed.rng(label), { lod: 2, inst });
+      const r0 = treeParts(sp, t0);
+      if (t0.foliageMesh) {
+        r0.push({
+          geo: t0.foliageMesh,
+          tris: t0.foliageMesh.index ? t0.foliageMesh.index.count / 3 : 0,
+          make: () => foliageMaterial({ color: sp.foliageColor }),
+          // cards already cast equivalent crown coverage — mesh-leaf shadow
+          // casting would double the caster load for no visible gain
+          castShadow: false,
+        });
+      }
       const r1 = treeParts(sp, t1);
       const r2 = treeParts(sp, t2);
       const b = bounds(r1.map((p) => p.geo));
@@ -172,6 +213,7 @@ export async function buildVegLibrary(
       pools.push({
         cls: ci,
         variant: v,
+        r0,
         r1,
         r2,
         trisR1: t1.stats.tris,
@@ -318,6 +360,9 @@ export async function buildVegLibrary(
   // ---- extras: deadfall + boulders/slabs -------------------------------------
   progress(0.86, 'veg: deadfall + boulder pools');
   const deadTex = barkOf(5);
+  // weathered-wood darkening: the snag bark bake is pale gray and logs read
+  // as glowing white slivers in noon sun without it
+  const logDim = { r: 0.6, g: 0.52, b: 0.44 };
   const decayOf: DecayState[] = ['fresh', 'mossy', 'rotten', 'mossy'];
   for (let v = 0; v < 4; v++) {
     const log = buildLog(seed.rng(`veg/log/${v}`), decayOf[v] as DecayState);
@@ -330,7 +375,7 @@ export async function buildVegLibrary(
         {
           geo: log.geometry,
           tris: log.tris,
-          make: () => deadwoodMaterial(deadTex),
+          make: () => deadwoodMaterial(deadTex, logDim),
           castShadow: true,
         },
       ],
@@ -353,7 +398,7 @@ export async function buildVegLibrary(
         {
           geo: stump.geometry,
           tris: stump.tris,
-          make: () => deadwoodMaterial(deadTex),
+          make: () => deadwoodMaterial(deadTex, logDim),
           castShadow: true,
         },
       ],
@@ -370,8 +415,13 @@ export async function buildVegLibrary(
     { cls: VegClass.Boulder, preset: 'boulder', moss: 0.3 },
     { cls: VegClass.Slab, preset: 'slab', moss: 0.12 },
   ];
+  // scatter keys boulder/slab variants by rock exposure: 0/1 = pale bedrock
+  // blocks beside cliffs (matching them), 2/3 = dark mossy forest rocks
+  const paleRock = { r: 0.34, g: 0.33, b: 0.3 };
   for (const { cls, preset, moss } of rockPools) {
     for (let v = 0; v < 4; v++) {
+      const tone = v < 2 ? paleRock : undefined;
+      const vMoss = v < 2 ? 0.08 : moss;
       const hi = buildRock(preset, seed.rng(`veg/${preset}/${v}`), 4);
       const lo = buildRock(preset, seed.rng(`veg/${preset}/${v}`), 3);
       const b = bounds([hi.geometry]);
@@ -383,7 +433,7 @@ export async function buildVegLibrary(
           {
             geo: hi.geometry,
             tris: hi.stats.tris,
-            make: () => rockMaterial({ moss }),
+            make: () => rockMaterial({ moss: vMoss, tone }),
             castShadow: true,
           },
         ],
@@ -391,7 +441,7 @@ export async function buildVegLibrary(
           {
             geo: lo.geometry,
             tris: lo.stats.tris,
-            make: () => rockMaterial({ moss }),
+            make: () => rockMaterial({ moss: vMoss, tone }),
             castShadow: true,
           },
         ],
@@ -420,10 +470,18 @@ export async function buildVegLibrary(
   ];
   for (const sc of stoneClasses) {
     for (let v = 0; v < 4; v++) {
-      const hi = buildRock(sc.preset, seed.rng(`veg/stone${sc.cls}/${v}`), sc.d1);
+      // StoneL variants are context-keyed by the scatter kernel: 0/1 spawn
+      // on dry scree (pale faceted talus matching the cliff that shed it),
+      // 2/3 in streambeds (dark water-rounded, mossy) — scree stops reading
+      // as smooth dark blobs
+      const isTalus = sc.cls === VegClass.StoneL && v < 2;
+      const preset = sc.cls === VegClass.StoneL ? (isTalus ? 'talus' : 'boulder') : sc.preset;
+      const moss = sc.cls === VegClass.StoneL ? (isTalus ? 0.06 : 0.3) : sc.moss;
+      const tone = isTalus ? { r: 0.35, g: 0.34, b: 0.31 } : undefined;
+      const hi = buildRock(preset, seed.rng(`veg/stone${sc.cls}/${v}`), sc.d1);
       const lo =
         sc.d2 !== null
-          ? buildRock(sc.preset, seed.rng(`veg/stone${sc.cls}/${v}`), sc.d2)
+          ? buildRock(preset, seed.rng(`veg/stone${sc.cls}/${v}`), sc.d2)
           : null;
       const b = bounds([hi.geometry]);
       trackCls(sc.cls, b.height, b.radius);
@@ -434,7 +492,7 @@ export async function buildVegLibrary(
           {
             geo: hi.geometry,
             tris: hi.stats.tris,
-            make: () => rockMaterial({ moss: sc.moss }),
+            make: () => rockMaterial({ moss, tone }),
             castShadow: sc.cls !== VegClass.StoneS,
           },
         ],
@@ -443,7 +501,7 @@ export async function buildVegLibrary(
               {
                 geo: lo.geometry,
                 tris: lo.stats.tris,
-                make: () => rockMaterial({ moss: sc.moss }),
+                make: () => rockMaterial({ moss, tone }),
                 castShadow: sc.cls === VegClass.StoneL,
               },
             ]
@@ -456,7 +514,9 @@ export async function buildVegLibrary(
     }
     clsMaxDist[sc.cls] = sc.maxDist;
   }
-  // fallen branches: scaled twig tubes, deadwood-shaded
+  // fallen branches: scaled twig tubes, deadwood-shaded. Dimmed hard: the
+  // snag-bark albedo is pale gray and read as glowing white sticks at noon.
+  const branchDim = { r: 0.5, g: 0.42, b: 0.34 };
   for (let v = 0; v < 4; v++) {
     const geo = twigGeometry(seed.rng(`veg/branch/${v}`));
     geo.scale(6.5, 5, 6.5);
@@ -470,7 +530,7 @@ export async function buildVegLibrary(
         {
           geo,
           tris,
-          make: () => deadwoodMaterial(deadTex),
+          make: () => deadwoodMaterial(deadTex, branchDim),
           castShadow: false,
         },
       ],
@@ -480,7 +540,7 @@ export async function buildVegLibrary(
         {
           geo: geo.clone(),
           tris,
-          make: () => deadwoodMaterial(deadTex),
+          make: () => deadwoodMaterial(deadTex, branchDim),
           castShadow: false,
         },
       ],

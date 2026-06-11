@@ -66,6 +66,14 @@ export const ROCK_PRESETS = {
     macro: 0.22, strata: 0.13, strataFreq: 5.5, strataTilt: 0.1,
     ridged: 0.12, cuts: 6, cutBite: 0.4, micro: 0.02,
   },
+  // freshly-shed talus block: faceted but not box-prismatic ('angular' at
+  // cuts 10/bite .5 produced near-cubes), with surface roughness so the
+  // facets aren't dead-flat planes
+  talus: {
+    radius: 0.95, squash: [1, 0.8, 0.9] as [number, number, number],
+    macro: 0.2, strata: 0.05, strataFreq: 4.2, strataTilt: 0.4,
+    ridged: 0.14, cuts: 7, cutBite: 0.36, micro: 0.02,
+  },
 } as const;
 
 export type RockPreset = keyof typeof ROCK_PRESETS;

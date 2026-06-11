@@ -93,6 +93,22 @@ export class PostStack {
     const camPosW = vec3(uCamPos);
 
     const scenePass = pass(scene, camera);
+    // ?postmin=1 — bisect probe: bare scene pass through the pipeline, no
+    // MRT/effects. If shadows survive here but not in the full stack, an
+    // effect node is the culprit; if they die here, pass() itself is.
+    if (q.get('postmin') === '1') {
+      if (q.get('postmrt') === '1') {
+        scenePass.setMRT(mrt({ output, velocity }));
+        this.post = new RenderPipeline(renderer);
+        this.post.outputNode = scenePass.getTextureNode('output');
+      } else {
+        this.post = new RenderPipeline(renderer);
+        this.post.outputNode = scenePass;
+      }
+      this.exposureBuf = instancedArray(2, 'float');
+      this.exposureKernel = Fn(() => {})().compute(1);
+      return;
+    }
     scenePass.setMRT(
       mrt({
         output,

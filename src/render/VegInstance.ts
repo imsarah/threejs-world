@@ -42,6 +42,8 @@ export interface RingFade {
   /** dither OUT as distance exceeds this (near ring of a boundary) */
   fadeOutAt?: number;
   band: number;
+  /** override band width for the fade-in edge (asymmetric boundaries) */
+  inBand?: number;
 }
 
 export interface InstanceBinding {
@@ -92,8 +94,9 @@ export function applyDitherFade(
 ): void {
   let fadeExpr: NF = float(1);
   if (fade.fadeInAt !== undefined) {
+    const b = fade.inBand ?? fade.band;
     fadeExpr = fadeExpr.mul(
-      smoothstep(fade.fadeInAt - fade.band, fade.fadeInAt + fade.band, dist),
+      smoothstep(fade.fadeInAt - b, fade.fadeInAt + b, dist),
     );
   }
   if (fade.fadeOutAt !== undefined) {

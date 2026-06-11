@@ -13,13 +13,14 @@
  * deviation and rationale are documented in DEVIATIONS D-5.
  *
  * LOD rings (dithered crossfades in the materials):
- *   trees:  R1 full cards ≤110 m → R2 branch-cards ≤340 m → octahedral
+ *   trees:  R0 hero ≤26 m (full bark + cards + real mesh leaves, ≥100k tris)
+ *           → R1 full cards ≤150 m → R2 branch-cards ≤460 m → octahedral
  *           impostors beyond (4-tile view blend, relit — D-4 runtime)
  *   understory: single ring with per-class max distance
  *   extras: boulders/slabs swap to low-detail rock at 120 m, live to 700 m
  */
 
-import { Group, Mesh, Vector3, Vector4 } from 'three';
+import { Color, Group, Mesh, Vector3, Vector4 } from 'three';
 import type { PerspectiveCamera } from 'three';
 import { Frustum, Matrix4 } from 'three';
 import {
@@ -50,6 +51,7 @@ import {
   uniformArray,
   vec2,
   vec3,
+  vec4,
 } from 'three/tsl';
 import type { Heightfield } from '../world/Heightfield';
 import type { ProbeGI } from '../gpu/passes/ProbeGI';
@@ -60,7 +62,11 @@ import type { NF, NI, NU, NV3, NV4 } from '../gpu/TSLTypes';
 import type { VegLib } from './VegLibrary';
 
 // ring distances (m) + dither bands (user feedback: transitions read too
-// close — full-card trees hold to 150 m, impostors start at 460 m)
+// close — full-card trees hold to 150 m, impostors start at 460 m).
+// Hero ring 0 (≤26 m): full bark + cards + REAL mesh leaves — the nanite-
+// equivalence near field (spec floor: hero tree ≥100k tris).
+const R0_FAR = 26;
+const BAND0 = 5;
 const R1_FAR = 150;
 const BAND1 = 14;
 const R2_FAR = 460;
@@ -69,6 +75,7 @@ const EX_R1_FAR = 120;
 const EX_BAND = 15;
 
 // per-group compact-region capacities
+const CAP_HERO = 48;
 const CAP_TREE_R1 = 6144;
 const CAP_TREE_R2 = 8192;
 const CAP_IMPOSTOR = 49152;
@@ -76,10 +83,11 @@ const CAP_UNDER = 4096;
 const CAP_EX_R1 = 1024;
 const CAP_EX_R2 = 2048;
 
-const GROUPS = 146;
+const GROUPS = 170;
 
-function groupOf(cls: number, variant: number, ring: 1 | 2 | 3): number {
+function groupOf(cls: number, variant: number, ring: 0 | 1 | 2 | 3): number {
   if (cls < 6) {
+    if (ring === 0) return 146 + cls * 4 + variant;
     if (ring === 3) return 48 + cls;
     return (cls * 4 + variant) * 2 + (ring - 1);
   }
@@ -92,6 +100,7 @@ function capOf(g: number): number {
   if (g < 48) return g % 2 === 0 ? CAP_TREE_R1 : CAP_TREE_R2;
   if (g < 54) return CAP_IMPOSTOR;
   if (g < 82) return CAP_UNDER;
+  if (g >= 146) return CAP_HERO;
   if (g < 114) return (g - 82) % 2 === 0 ? CAP_EX_R1 : CAP_EX_R2;
   // size-stratified stones/branches (cls 20–23)
   const cls = 16 + ((g - 82) >> 3);
@@ -214,9 +223,11 @@ export class Forests {
             ? this.scatter.extras
             : this.scatter.stones;
 
-    const fadeFor = (cls: number, ring: 1 | 2 | 3): RingFade => {
+    const fadeFor = (cls: number, ring: 0 | 1 | 2 | 3): RingFade => {
       if (cls < 6) {
-        if (ring === 1) return { fadeOutAt: R1_FAR, band: BAND1 };
+        if (ring === 0) return { fadeOutAt: R0_FAR, band: BAND0 };
+        if (ring === 1)
+          return { fadeInAt: R0_FAR, inBand: BAND0, fadeOutAt: R1_FAR, band: BAND1 };
         if (ring === 2)
           return { fadeInAt: R1_FAR, fadeOutAt: R2_FAR, band: BAND1 };
         return { fadeInAt: R2_FAR, band: BAND2 };
@@ -233,7 +244,8 @@ export class Forests {
 
     for (const pool of lib.pools) {
       const layer = layerOf(pool.cls);
-      const rings: { ring: 1 | 2; parts: typeof pool.r1 }[] = [];
+      const rings: { ring: 0 | 1 | 2; parts: typeof pool.r1 }[] = [];
+      if (pool.r0) rings.push({ ring: 0, parts: pool.r0 });
       if (pool.r1) rings.push({ ring: 1, parts: pool.r1 });
       if (pool.r2) rings.push({ ring: 2, parts: pool.r2 });
       for (const { ring, parts } of rings) {
@@ -253,6 +265,15 @@ export class Forests {
             fade: fadeFor(pool.cls, ring),
           });
           this.patchGI(mat);
+          // ?clsdbg=1 — flat-color every draw by VegClass (artifact triage:
+          // "which pool is that?"); keeps alpha cutouts so silhouettes read
+          if (new URLSearchParams(window.location.search).get('clsdbg') === '1') {
+            const hue = (pool.cls * 47) % 360;
+            const cdbg = new Color().setHSL(hue / 360, 0.95, 0.55);
+            const op = mat.opacityNode as unknown as NF | null;
+            mat.colorNode = vec4(vec3(cdbg.r, cdbg.g, cdbg.b), 1);
+            if (op) mat.opacityNode = op;
+          }
           addDraw(part.geo, mat, g, part.tris, part.castShadow && ringCasts);
         }
       }
@@ -374,9 +395,15 @@ export class Forests {
 
         if (kind === 'trees') {
           const pool = cls.mul(4).add(variant).toInt();
-          If(dist.lessThan(R1_FAR + BAND1), () => {
-            appendTo(pool.mul(2) as unknown as NI, i as unknown as NU);
+          If(dist.lessThan(R0_FAR + BAND0), () => {
+            appendTo(pool.add(146) as unknown as NI, i as unknown as NU);
           });
+          If(
+            dist.greaterThanEqual(R0_FAR - BAND0).and(dist.lessThan(R1_FAR + BAND1)),
+            () => {
+              appendTo(pool.mul(2) as unknown as NI, i as unknown as NU);
+            },
+          );
           If(
             dist.greaterThanEqual(R1_FAR - BAND1).and(dist.lessThan(R2_FAR + BAND2)),
             () => {
@@ -464,6 +491,7 @@ export class Forests {
         attr as Parameters<Renderer['getArrayBufferAsync']>[0],
       );
       const counts = new Uint32Array(ab);
+      let hero = 0;
       let r1 = 0;
       let r2 = 0;
       let imp = 0;
@@ -478,9 +506,11 @@ export class Forests {
           else r2 += n;
         } else if (g < 54) imp += n;
         else if (g < 82) under += n;
-        else extras += n;
+        else if (g < 146) extras += n;
+        else hero += n;
       }
       this.hud = {
+        'veg.hero': hero,
         'veg.r1': r1,
         'veg.r2': r2,
         'veg.imp': imp,
