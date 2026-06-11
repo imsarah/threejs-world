@@ -48,7 +48,10 @@
       "Bash(sed -n 40,100p src/core/NoiseJS.ts)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 3 http://localhost:5173/)",
       "Bash(npx eslint *)",
-      "Bash(git commit -q -m 'Phase 4 CLOSE: dressing, hero hybrids, translucency, SS bounce, impostor capture, gate sheet *)"
+      "Bash(git commit -q -m 'Phase 4 CLOSE: dressing, hero hybrids, translucency, SS bounce, impostor capture, gate sheet *)",
+      "Bash(git -C /Users/sebastian/IdeaProjects/fable-demo2 log --oneline -8)",
+      "Bash(git -C /Users/sebastian/IdeaProjects/fable-demo2 status --short)",
+      "Bash(git commit -q -m 'Phase 5: GPU clustered-Poisson scatter \\(trees/understory/extras, density fns, ecotone warp, pcg2d hash\\) + ?view=scatter markers *)"
     ]
   }
 }

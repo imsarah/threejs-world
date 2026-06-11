@@ -8,6 +8,8 @@
  */
 
 import { ProbeGI } from '../gpu/passes/ProbeGI';
+import { runScatter } from '../gpu/passes/Scatter';
+import { addScatterDebug } from './ScatterDebug';
 import { Heightfield } from '../world/Heightfield';
 import { TerrainTiles } from '../world/TerrainTiles';
 import { PostStack } from '../render/PostStack';
@@ -73,6 +75,14 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
       engine.stats.counters['terrain.tiles'] = tiles.activeTiles;
     });
   }
+
+  // vegetation/rock placement (Phase 5): GPU clustered-Poisson scatter
+  ctx.progress(0.962, 'vegetation: scattering instances');
+  const scatter = await runScatter(engine.renderer, hf, seed);
+  engine.stats.counters['veg.trees'] = scatter.trees.count;
+  engine.stats.counters['veg.under'] = scatter.understory.count;
+  engine.stats.counters['veg.extras'] = scatter.extras.count;
+  if (view === 'scatter') addScatterDebug(engine.scene, scatter);
 
   // volumetric clouds (noise bake + sun-shadow map)
   ctx.progress(0.97, 'sky: baking cloud noise');
