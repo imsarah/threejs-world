@@ -69,3 +69,28 @@ gallery.
 direction, depth-based parallax, dithered transitions) belongs to the
 Phase-5 LOD/scatter system where impostors actually draw. Capture data and
 encoding are final.
+
+## D-5: Culling granularity + occlusion + canopy shadows (Phase 5)
+
+**Spec:** meshlet/cluster culling + Hi-Z occlusion + indirect draws.
+**Implemented:**
+- Cull granularity = INSTANCE (tree/shrub/rock), not 64-tri meshlets. GPU
+  compute culls 1.1M scattered instances per frame (distance bound → frustum
+  → terrain occlusion → LOD ring classify → atomic compact append →
+  `geometry.setIndirect`). Meshlet-level culling pays off when single objects
+  span many screen tiles (buildings, terrain chunks); for sub-30 m vegetation
+  the instance IS the natural cluster, and ring LODs (hero/R1/R2/impostor)
+  already bound per-instance triangle cost.
+- Occlusion = heightfield ray-march (camera→crown-top, 7 steps against the
+  height mips) instead of depth Hi-Z. A heightfield world's dominant occluder
+  IS the terrain; this needs no depth-pyramid pass, no 1-frame latency, and
+  works for off-screen-to-on-screen pops. Conservative (4 m clearance).
+- Canopy shadows are approximated: cards + a per-pool FITTED crown proxy
+  (ellipsoid+trunk, world-anchored dither at species transmission density)
+  cast per cascade; R2/impostor bands cast proxy-only, fading out by 1.1 km.
+  Exact per-leaf shadow maps at 4 km scale are neither feasible nor visible
+  at cascade texel sizes (≥0.5 m beyond 150 m).
+**Why:** matches the spec's intent (GPU-driven, zero CPU per-instance work,
+occlusion-aware) with the cheapest primitives that survive the quality bar.
+Revisit meshlets only if hero-rock/trunk close-ups show overdraw cost in the
+Phase-7 profile.
