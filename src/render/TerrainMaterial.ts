@@ -253,6 +253,23 @@ export function buildTerrainShading(inp: TerrainShadingInputs): TerrainShading {
   col = mix(col, snowCol, snowW);
   col = col.mul(macroTint.add(1));
 
+  // gorge/ravine wall vegetation (scene1: ravine walls are NOT bare — they
+  // carry moss bands, hanging greens and ledge clumps). Steep faces in damp
+  // valleys grow green in noise pockets: fbm bands read as hanging veg,
+  // value-noise pockets as ledge clumps. Karst gorges get the most.
+  const wallK = smoothstep(0.62, 1.0, slope)
+    .mul(smoothstep(0.12, 0.42, moisture.add(riverDepth.mul(2))))
+    .mul(smoothstep(1350, 700, h))
+    .mul(snowW.oneMinus())
+    .mul(zm.tKarst.mul(0.45).add(0.55));
+  const wallBands = smoothstep(0.38, 0.72, fbmV(7.3, 0.13, 0.49));
+  const ledgePock = smoothstep(0.45, 0.78, val(2.9, 0.61, 0.07));
+  const wallVeg = wallK
+    .mul(wallBands.mul(0.85).add(ledgePock.mul(0.6)))
+    .clamp(0, 0.92);
+  const wallGreen = mix(vec3(0.07, 0.115, 0.04), vec3(0.105, 0.165, 0.05), macroA);
+  col = mix(col, wallGreen, wallVeg);
+
   // wet darkening: river margins, lake shores, marshes
   const shoreWet = smoothstep(LAKE_LEVEL + 2.5, LAKE_LEVEL + 0.3, h);
   const wet = clamp(

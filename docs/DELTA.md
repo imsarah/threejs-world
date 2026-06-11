@@ -158,7 +158,18 @@ Top-10 deltas (worst first):
 9. Pine crown structure (Ph-4 #3 carried).
 10. Rock micro normals on hero boulders (Ph-4 #8 carried).
 
-Fixes this loop: #3 done; #1 wall greening (terrain material moss/ledge veg
-on steep damp faces near rivers) + #2 river boulder affinity for stones +
-bank margin debris density. Repetition flight: no clone patterns or texture
-tiling across strip-1..5 ✓ (pop = dithered crossfades, live-verified).
+Fixes this loop — RESULTS:
+- #3 grass DONE: ~1.0M blades at meadow framing (g0×5+g1×3+g2×3), near
+  scruff floor kills camera-adjacent baldness. shots/phase-5/floor-grass.
+- #1 wall greening DONE (color level): moss bands + ledge clumps on steep
+  damp faces (fbm 7.3 m bands + 2.9 m pockets, karst-boosted) — gorge walls
+  read vegetated (gorge-vs-scene1.png). HONEST GAP vs scene1: geometric
+  hanging plants/wall trees still missing → carried (wall-veg scatter class
+  is the eventual fix; color pass closes the bare-wall read).
+- #2 river boulders/cobbles DONE: stream weight 0.9→1.5, StoneL size skew
+  near streams, bank-margin cobble density up. Submerged beds stay empty
+  (correct — water excludes; scene1's bed is DRY, ours flows: Phase 6 water
+  will make beds read).
+Repetition flight: no clone patterns or texture tiling across strip-1..5 ✓
+(pop = dithered crossfades, live-verified). Floors: hero 19.5M / vista 6.8M
+/ grass 1.0M — all passed (shots/phase-5/floor-*).

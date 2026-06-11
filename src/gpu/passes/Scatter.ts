@@ -749,7 +749,7 @@ export async function runScatter(
         s.rockExp
           .mul(0.85)
           .add(scree.mul(0.85))
-          .add(streamK.mul(0.9))
+          .add(streamK.mul(1.5))
           .add(cliffAbove.mul(1.15))
           .add(0.16),
       )
@@ -778,7 +778,8 @@ export async function runScatter(
     const sink = float(0.05).toVar();
     const variant = cellHash(cell, sS ^ 0x5c5c).mul(4).floor().min(3).toVar();
     If(r.lessThan(stoneBase), () => {
-      const sr = h2.x;
+      // streambeds skew LARGE: scene1 beds are built from rounded boulders
+      const sr = h2.x.sub(streamK.mul(0.16));
       If(sr.lessThan(0.13), () => {
         cls.assign(int(VegClass.StoneL));
         scale.assign(h2.y.pow(1.7).mul(1.6).add(0.6)); // 0.6–2.2 m

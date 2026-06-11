@@ -214,14 +214,14 @@ function bladeClump(blades: number, segs: number): BufferGeometry {
   return g;
 }
 
-/** two crossed wide blades — far-band tuft (≈ a small clump in one card) */
+/** three crossed wide blades — far-band tuft (≈ a small clump in one card) */
 function tuftGeometry(): BufferGeometry {
   const pos: number[] = [];
   const nrm: number[] = [];
   const uvA: number[] = [];
   const idx: number[] = [];
   const W = 0.04;
-  for (let k = 0; k < 2; k++) {
+  for (let k = 0; k < 3; k++) {
     const a = k * 1.92 + 0.4;
     const c = Math.cos(a);
     const s = Math.sin(a);
@@ -399,14 +399,21 @@ export class GroundRing {
       const canopy = canopyAt(canopyTex, wpos);
       // soft bank margin — a hard depth cut prints a razor arc along streams
       const bank = float(1).sub(smoothstep(0.08, 0.28, fl.z));
-      const dens = byBio(bioId, [0.12, 0.6, 0.55, 0.6, 1.3, 1.0])
+      let dens = byBio(bioId, [0.18, 0.7, 0.62, 0.7, 1.5, 1.1])
         .mul(bank)
         .mul(bio.z.mul(0.85).add(0.15))
         .mul(float(1).sub(bio.w.mul(0.55)))
-        .mul(float(1).sub(bio.y.mul(0.95)))
         .mul(float(1).sub(canopy.mul(0.45)))
-        .mul(float(1).sub(smoothstep(0.55, 0.95, ns.w)))
         .mul(fl.x.mul(0.35).add(0.75));
+      // near-field scruff floor: NOTHING within ~12 m may be totally bald
+      // (Pillar A) — thin dry blades survive even on poor soil. Hard gates
+      // (water, snow, steep rock) still apply below.
+      dens = dens.max(
+        float(0.3).mul(float(1).sub(smoothstep(8, 14, dist))).mul(bank),
+      );
+      dens = dens
+        .mul(float(1).sub(bio.y.mul(0.95)))
+        .mul(float(1).sub(smoothstep(0.55, 0.95, ns.w)));
       // coverage-conserving continuous LOD ("cheap nanite for aggregates"):
       // accept thins SMOOTHLY with distance — survivors widen by 1/sqrt(thin)
       // in the vertex stage, so screen coverage stays constant and there are
@@ -468,7 +475,7 @@ export class GroundRing {
       // bank margin: too shallow for the bed override, too wet for grass —
       // gravel it or it reads as a bare strip along every wash
       const marginK = smoothstep(0.005, 0.06, fl.z).mul(float(1).sub(streamK));
-      const wCobble = streamK.mul(2.2).add(marginK.mul(0.8)).add(bio.w.mul(0.3)).mul(0.5);
+      const wCobble = streamK.mul(2.2).add(marginK.mul(1.4)).add(bio.w.mul(0.3)).mul(0.5);
       const wPebble = bio.w.mul(0.9).add(streamK).add(marginK.mul(1.4)).add(0.15).mul(0.6);
       const wTwig = canopy.mul(1.8).add(0.12).mul(float(1).sub(streamK));
       const wChip = canopy.mul(0.8).mul(float(1).sub(streamK));
@@ -479,7 +486,7 @@ export class GroundRing {
         .mul(float(1).sub(bio.y.mul(0.9)))
         .mul(wSum.mul(0.5).min(1))
         .max(streamK.mul(0.95))
-        .max(marginK.mul(0.7))
+        .max(marginK.mul(0.85))
         .mul(float(1).sub(smoothstep(0.7, 1.05, ns.w)));
       const edge = float(1).sub(smoothstep(DEB_R * 0.72, DEB_R, dist));
       If(cellHash(wc, salt ^ 0x132f).greaterThanEqual(dens.mul(edge)), () => {
@@ -513,7 +520,7 @@ export class GroundRing {
     // ---------------- draws -------------------------------------------------------
     const draws: { geo: BufferGeometry; mat: MeshStandardNodeMaterial; g: number }[] = [];
 
-    const grassGeos = [bladeClump(4, 4), bladeClump(2, 2), tuftGeometry()];
+    const grassGeos = [bladeClump(5, 4), bladeClump(3, 2), tuftGeometry()];
     const grassFades: [number | null, number | null][] = [
       [null, G_NEAR],
       [G_NEAR, G_MID],
