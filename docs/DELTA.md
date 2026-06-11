@@ -131,3 +131,34 @@ hero beech 1.26M, hero rock 327k, grass 260k blades shown @ 60 fps-class).
 Self-score (vegetation row): 6.5/10 — species read as the right class at
 review distance; the gap to refs is assembly density (Phase 5) + motion
 (Phase 6), not asset quality.
+
+## Phase 5 loop (2026-06-11) — assembled world vs refs (scene1 primary)
+
+Framings: karst gorge (650,700,yaw .6) vs scene1; meadow (-1430,-250); strip
+shots/wip/strip-1..5 (2 km repetition flight); riverbank (-850,850).
+
+Top-10 deltas (worst first):
+1. Gorge/ravine WALLS BARE vs scene1's densely vegetated walls (hanging
+   greens, ledge trees, moss bands) — biggest composition gap. [FIXING]
+2. Stream BANKS/BEDS lack rounded boulders + cobble mass; scene1 beds are
+   fully rocky. Debris margin density thin; no boulder river-affinity.
+   [FIXING]
+3. Grass sward density/lushness — FIXED this loop: 5/3-blade clumps,
+   3-plane tufts, density raise, near scruff floor → ~1.0M blades at meadow
+   framing (floor 800k ✓).
+4. Distant forest reads as smooth felt at vista distances (impostor carpet +
+   canopy shell uniformity).
+5. Card grazing flatness at extreme close range (inside-crown framings) —
+   carried from Phase 4 (#5), hero ring covers ground-level views.
+6. Scarp/bank cut faces show faint terracing stripes (error-split steps +
+   displacement interplay) — watch after displacement tuning.
+7. Noon closed-canopy interiors correctly dim but mid-density woodland still
+   reads uniform; re-judge dapple at gap framings (crown proxies landed).
+8. Water flat glassy-gray (Phase 6 owns: refraction/foam/caustics).
+9. Pine crown structure (Ph-4 #3 carried).
+10. Rock micro normals on hero boulders (Ph-4 #8 carried).
+
+Fixes this loop: #3 done; #1 wall greening (terrain material moss/ledge veg
+on steep damp faces near rivers) + #2 river boulder affinity for stones +
+bank margin debris density. Repetition flight: no clone patterns or texture
+tiling across strip-1..5 ✓ (pop = dithered crossfades, live-verified).
