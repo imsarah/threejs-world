@@ -148,27 +148,55 @@ pass (contrast-stretched weather, isotropic phase floor, base-darkened ambient, 
 cov 0.62), contact shadows (?ablate=contact to A/B), black facets root-caused to GTAO
 (NOT PCSS — depth-derived normals fixed it), gate + shadow-color test PASSED.
 
-**Phase 5 — scattering (clustered Poisson, GPU instance buffers), chunk
-streaming, culling (frustum + Hi-Z), LOD/impostor transitions, far forests.**
-Assets exist (Phase 4); now the world gets planted. Includes: per-species
-density functions (biome/slope/altitude/moisture), card-LOD rings + D-4
-impostor runtime material, shadow-pass tile culling (20M-tris debt), grass
-ring around camera (800k floor), forest-interior gate re-judge vs scene1.
+**Phase 5 — BUILT, gate pending.** The world is planted end-to-end:
+- `Scatter.ts`: boot GPU clustered-Poisson (162k trees / 467k understory /
+  7.4k extras at seed 1), per-class density fns (biome/slope/treeline/moisture/
+  snow/rockExp/water), ecotone warp, parent-clump field doubling as canopy
+  proxy for understory (ferns under crowns, flowers in gaps, pink shrubs at
+  clump EDGES). pcg2d integer hash (pure expression — usable in materials).
+  + `buildCanopyMap`: crowns splatted to a 1024² coverage field; attenuates
+  probe ambient under canopy (terrain ×0.55, veg ×0.4) = forest interiors no
+  longer sky-bright (user "washed out" + shadow-visibility fix).
+- `VegLibrary.ts`: K=4 variants/species; R1/R2 ring geoms from the SAME
+  skeleton (no-pop LODs); ring diet in TreeBuilder (bark stops below anchor
+  level; cards thin+enlarge ≈ sqrt(stride)) → R1 avg 8.4k tris, R2 1.8k.
+  Impostor capture per species.
+- `Forests.ts`: per-frame clear→cull→indirect computes. Cull = per-class
+  dist bound + 6-plane frustum + terrain-occlusion march (camera→crown-top
+  against height buffer) + ring classify w/ overlap bands → atomic append
+  into per-(pool,ring) compact regions → `geometry.setIndirect` draws (one
+  shared IndirectStorageBufferAttribute, byte offsets). Rings: R1 cards
+  ≤150 m → R2 ≤460 m → octahedral impostors (D-4 runtime: 4-tile hemi-oct
+  bilinear blend, relit normals, per-instance yaw/tint) — IGN-dithered
+  crossfades. Tree rings 1+2 cast shadows; terrain casts via `ShadowProxy`
+  (512² grid; CDLOD castShadow=false; saved ~54 ms).
+- `GroundRing.ts`: toroidal-clipmap grass (3072², 136 slots/m², 4/2-blade
+  CLUMP geoms near/mid + tuft cross far; ≈520k blades visible at meadow
+  framings) + debris ring (cobble/pebble/twig/chip/litter; streambed
+  override density — beds read cobbled). `CanopyShell.ts`: far forests as a
+  lit lumpy aggregate beyond 620 m.
+- Veg materials: GI-patched (IrradianceNode), canopy-attenuated, per-instance
+  tint, vec4-alpha shadow contract + maskShadowNode cutouts,
+  castShadowPositionNode, instance NORMAL rotation (normalLocal.assign).
 
 ## Next actions (always keep current)
 
-- Phase 5 design pass: GPU scatter (clustered Poisson per spec §3.5 — parent
-  clumps + child scatter, density fns from biome/slope/moisture/altitude fields,
-  instance buffers written on GPU), chunk residency/streaming, frustum + Hi-Z
-  cull compute → indirect draws, LOD rings (hero hybrid ≤40 m → cards ≤250 m →
-  branch cards ≤600 m → octahedral impostors beyond; dithered transitions),
-  far forests as canopy shells, 800k-blade grass ring, shadow-pass tile culling.
-- Phase-4 species variants: bake K=4–6 structural variants per species per ring
-  (geometry reuse via instancing; per-instance hue/age/lean in instance data).
-- KNOWN visual debts (carried): pine crown structure (DELTA Ph-4 #3); rock micro
-  normals (#8); grass color mixing (#7); DELTA Ph-2 #4 (2nd cloud layer, Ph 6),
-  #7 (gate framing anchor), #10 (god rays, Ph 6); kettle-pond density (Ph 6);
-  terrain 20 M tris at massif views (shadow culling, Ph 5).
+- PHASE 5 GATE: repetition flight strip (2 km, no repeats/pop), throughput
+  floors (≥5M hero / ≥3M vista, HUD veg.tris + counters), forest-interior
+  re-judge vs scene1, DELTA.md Phase-5 loop (top-10 → fix top 3), DEVIATIONS
+  D-5 (cull granularity = instance, terrain-march occlusion in lieu of
+  depth Hi-Z; canopy-shadow approximations), gate sheet → shots/phase-5/.
+- USER feedback open items: trunks "inside-out" report NOT reproduced after
+  normal-rotation fix + bark DoubleSide insurance (facedbg shows cards/grass
+  correct) — needs user confirmation; near-grass lushness re-check in their
+  session; perf 60–113 ms GPU at veg-heavy 1080p views (Phase 7 owns budget,
+  but watch).
+- KNOWN visual debts (carried): pine crown structure (Ph-4 #3); rock micro
+  normals (#8); card grazing flatness (#5, hero ring will help); DELTA Ph-2
+  #4 (2nd cloud layer, Ph 6), #10 (god rays, Ph 6); kettle ponds (Ph 6);
+  PCSS receive cost at ground views (~20-30 ms — Phase 7).
+- Phase 5 leftovers (small): hero-hybrid ring 0 for nearest ~12 trees;
+  per-cascade shadow culling (currently view-frustum lists feed cascades).
 
 ## Key decisions log
 
@@ -296,3 +324,26 @@ split view, ground-clamped camera helper, silhouette/tiling gate + DELTA.md.
 - Broken-trunk taper: trunk points span only the kept length — taper must use
   t×brokenTop or the break ends in a spike and the jagged cap never triggers
   (also: don't double-cull children above a break that's already shortened).
+- TSL toVar/assign (incl. inside helper fns like a hash!) need a Fn() stack —
+  material node graphs DON'T have one. Shared helpers must be PURE expression
+  chains (pcg2d was rewritten for this).
+- WGSL buffer indices must be i32/u32: a float select-chain `.toInt()` can
+  still emit an f32 var as index — use int(0).toVar() + If-assigns.
+- sim-res hydrology vs full-res height: W−h and riverDepth comparisons need
+  generous thresholds (≥0.25 m) or interpolation mismatch flags whole
+  floodplains as "under water" (silently deleted 53k trees + all grass there).
+- three shadow contract for custom materials: shadow alpha = colorNode.a ×
+  alphaTest copy — vec3 colorNodes silently discard ALL caster fragments.
+  Pin vec4(rgb,1) + maskShadowNode for alpha-tested cutouts. Instanced
+  positionNode ALSO needs castShadowPositionNode set explicitly.
+- Custom instancing must rotate normals: assign normalLocal inside the
+  positionNode Fn (three's own InstanceNode mechanism). "Quasi-radial normals
+  don't need rotation" is wrong — per-fragment lighting flips sides.
+- frontFacing-based debugging on DoubleSide cards is ambiguous (rolled quads
+  show both faces) — verify winding on closed tubes or single-sided geo only.
+- FlyCamera owns camera orientation: scenes can't lookAt; pass spawn pose via
+  hooks.initialPose (applied after the rig exists). ?pitch= now works.
+- Indirect-draw stack that works on three 0.184/WebGPU: Mesh (not
+  InstancedMesh) + geometry.setIndirect(attr, byteOffset) + instanceIndex
+  reads via compact list; counts written by compute into the SAME
+  IndirectStorageBufferAttribute via storage(); frustumCulled=false.
