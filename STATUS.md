@@ -329,6 +329,16 @@ cov 0.62), contact shadows (?ablate=contact to A/B), black facets root-caused to
   (esp. river width/coverage now matching their "too much water" ask);
   wind feel (amplitude/speed live); fog density taste (?fog=N); particle
   visibility. Shadow-flicker live check still outstanding from Phase 5.
+- **NEXT (user-confirmed 2026-06-12): PHASE 7 PERF.** User has "serious
+  feedback on the direction" for perf improvements — they will deliver
+  it right after compacting the conversation. DO NOT pick a perf
+  strategy before reading that message; rehydrate, then wait for/read
+  their direction first. Current perf state: ~22-30 ms GPU @1080p mixed
+  framings (single samples; re-baseline with --gpusample medians);
+  known whales from the earlier attribution: veg main raster ~15 ms
+  (card overdraw/hero ring), bloom ~5 ms, water SSR loop; batch-2 added
+  +2 vertex taps to wind, g3 far-grass layer (~10-25k tufts), grass
+  normalTex tap, splat sheen — all unprofiled.
 - PHASE 7 PROGRESS (2026-06-12): perf pass 1 DONE — 48→32 ms GPU at the
   forest-hero framing (half-res GTAO + joint-bilateral upsample −12 ms;
   ring-1 casters to near cascades only −4 ms; ?ablate=casters knob).
