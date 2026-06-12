@@ -428,8 +428,12 @@ export class Forests {
         if (ring === 0) return { fadeOutAt: R0_FAR, band: BAND0 };
         if (ring === 1)
           return { fadeInAt: R0_FAR, inBand: BAND0, fadeOutAt: R1_FAR, band: BAND1 };
+        // bands MUST match across each boundary (in-band here = out-band of
+        // the nearer ring) or the complementary dither doesn't partition
+        // pixels and holes reappear — hence inBand: ring2's out edge pairs
+        // with the impostor's BAND2 while its in edge pairs with BAND1.
         if (ring === 2)
-          return { fadeInAt: R1_FAR, fadeOutAt: R2_FAR, band: BAND1 };
+          return { fadeInAt: R1_FAR, inBand: BAND1, fadeOutAt: R2_FAR, band: BAND2 };
         return { fadeInAt: R2_FAR, band: BAND2 };
       }
       const maxD = this.lib.clsMaxDist[cls] ?? 150;

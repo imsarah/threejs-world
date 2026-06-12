@@ -90,7 +90,9 @@ const GRASS_CELL = 0.105; // m → ±161 m ring, ~90 slots/m²
 const GRASS_R = 155;
 const G_NEAR = 30;
 const G_MID = 70;
-const GRASS_CAPS = [327680, 655360, 1572864]; // near/mid/far compact regions
+/** crossfade half-width — cull overlap and material fade MUST share it */
+const G_BAND = 12;
+const GRASS_CAPS = [524288, 1048576, 1835008]; // near/mid/far compact regions
 
 /**
  * Continuous distance thinning, conserved by blade widening (1/√thin in the
@@ -130,7 +132,14 @@ function fetchRing(bind: RingBind): { wc: NV2; y: NF; wpos: NV2 } {
   return { wc, y, wpos: wc.add(jit).mul(bind.cell) };
 }
 
-/** dithered band crossfade by camera distance */
+/**
+ * Dithered band crossfade by camera distance. COMPLEMENTARY partition (same
+ * scheme as VegInstance.applyDitherFade): the outgoing layer draws where
+ * IGN < fadeOut, the incoming one where IGN >= 1 − fadeIn — with the shared
+ * band width the two layers split the pixel set exactly, so blade density
+ * stays constant through the band. Same-comparison dithering halved the
+ * drawn pixels at every grass-layer boundary (visible thin rings).
+ */
 function bandFade(
   mat: MeshStandardNodeMaterial,
   dist: NF,
@@ -138,14 +147,19 @@ function bandFade(
   fadeOut: number | null,
   band: number,
 ): void {
-  let f: NF = float(1);
-  if (fadeIn !== null) f = f.mul(smoothstep(fadeIn - band, fadeIn + band, dist));
-  if (fadeOut !== null)
-    f = f.mul(float(1).sub(smoothstep(fadeOut - band, fadeOut + band, dist)));
-  const fv = varying(f);
+  const inV =
+    fadeIn !== null
+      ? varying(smoothstep(fadeIn - band, fadeIn + band, dist))
+      : null;
+  const outV =
+    fadeOut !== null
+      ? varying(float(1).sub(smoothstep(fadeOut - band, fadeOut + band, dist)))
+      : null;
   const prev = mat.colorNode as unknown as NV3 | null;
   mat.colorNode = Fn(() => {
-    Discard(fv.lessThanEqual(interleavedGradientNoise(screenCoordinate.xy)));
+    const ign = interleavedGradientNoise(screenCoordinate.xy);
+    if (inV) Discard(ign.lessThan(float(1).sub(inV)));
+    if (outV) Discard(ign.greaterThanEqual(outV));
     return prev ?? vec3(1, 0, 1);
   })();
 }
@@ -439,14 +453,23 @@ export class GroundRing {
       If(inFrustum(vec3(wpos.x, h.add(0.5), wpos.y), 1.4).lessThan(0.5), () => {
         Return();
       });
-      const lod = int(0).toVar();
-      If(dist.greaterThanEqual(G_NEAR), () => {
-        lod.assign(1);
+      // Boundary-band cells append to BOTH adjacent layers — the
+      // complementary dither in grassMaterial then draws each pixel from
+      // exactly one layer, holding blade density constant through the band.
+      // Single-list assignment + dither halved density at every boundary
+      // (the visible "transparent rings" around the camera).
+      If(dist.lessThan(G_NEAR + G_BAND), () => {
+        appendRing(int(0), wc, h);
       });
-      If(dist.greaterThanEqual(G_MID), () => {
-        lod.assign(2);
+      If(
+        dist.greaterThanEqual(G_NEAR - G_BAND).and(dist.lessThan(G_MID + G_BAND)),
+        () => {
+          appendRing(int(1), wc, h);
+        },
+      );
+      If(dist.greaterThanEqual(G_MID - G_BAND), () => {
+        appendRing(int(2), wc, h);
       });
-      appendRing(lod as unknown as NI, wc, h);
     })().compute(GRASS_GRID * GRASS_GRID);
     grassK.setName('grassRingCull');
 
@@ -714,7 +737,7 @@ export class GroundRing {
     mat.roughness = 0.88;
     mat.metalness = 0;
     mat.side = DoubleSide;
-    bandFade(mat, dist, fades[0], fades[1], 12);
+    bandFade(mat, dist, fades[0], fades[1], G_BAND);
     return mat;
   }
 

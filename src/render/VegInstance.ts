@@ -34,7 +34,7 @@ import {
   vec3,
   vec4,
 } from 'three/tsl';
-import type { NF, NU, NV3, NV4 } from '../gpu/TSLTypes';
+import type { NB, NF, NU, NV3, NV4 } from '../gpu/TSLTypes';
 import { vegWindOffset, windContext } from './Wind';
 
 /**
@@ -114,30 +114,40 @@ export function fetchInstance(bind: InstanceBinding): FetchedInstance {
  * maskShadowNode instead (pinned in instanceVeg). Fading casters with the
  * same IGN pattern leaves correlated texel holes in the cascade maps where
  * NEITHER ring writes depth, and shadows visibly thin at every ring band.
+ *
+ * COMPLEMENTARY partition: the OUTGOING ring of a boundary draws where
+ * IGN < fadeOut, the INCOMING ring where IGN >= 1 − fadeIn. With matching
+ * band widths fadeOut + fadeIn = 1 at every distance, so the two rings split
+ * the pixel set exactly — every pixel shows exactly one LOD through the
+ * band. Masking both edges with the SAME comparison (the old bug) made the
+ * incoming ring's pixels a subset of the outgoing's: at the 50/50 crossover
+ * half the pixels drew NEITHER ring = transparent hole bands around the
+ * camera.
  */
 export function applyDitherFade(
   mat: MeshStandardNodeMaterial,
   dist: NF,
   fade: RingFade,
 ): void {
-  let fadeExpr: NF = float(1);
+  const ign = interleavedGradientNoise(screenCoordinate.xy);
+  let draw: NB | null = null;
   if (fade.fadeInAt !== undefined) {
     const b = fade.inBand ?? fade.band;
-    fadeExpr = fadeExpr.mul(
+    const fIn = varying(
       smoothstep(fade.fadeInAt - b, fade.fadeInAt + b, dist),
     );
+    draw = ign.greaterThanEqual(float(1).sub(fIn));
   }
   if (fade.fadeOutAt !== undefined) {
-    fadeExpr = fadeExpr.mul(
+    const fOut = varying(
       float(1).sub(
         smoothstep(fade.fadeOutAt - fade.band, fade.fadeOutAt + fade.band, dist),
       ),
     );
+    const c = ign.lessThan(fOut);
+    draw = draw ? (draw.and(c) as NB) : c;
   }
-  const fadeV = varying(fadeExpr);
-  mat.maskNode = interleavedGradientNoise(screenCoordinate.xy).lessThan(
-    fadeV,
-  ) as unknown as typeof mat.maskNode;
+  if (draw) mat.maskNode = draw as unknown as typeof mat.maskNode;
 }
 
 /** per-instance hue/value jitter on top of the per-vertex vdata jitter */
