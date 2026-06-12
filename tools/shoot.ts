@@ -113,17 +113,31 @@ async function main(): Promise<void> {
   const gpuN = Number(str(args['gpusample']) ?? 0);
   if (gpuN > 0) {
     const samples: number[] = [];
+    const perKey = new Map<string, number[]>();
     for (let i = 0; i < gpuN; i++) {
       await page.evaluate(async () => window.__laas.settle && (await window.__laas.settle(12)));
-      const v = await page.evaluate(() => {
-        const g = window.__laas.stats?.gpuPasses ?? {};
-        return (g['render'] ?? 0) + (g['compute'] ?? 0);
-      });
-      if (v > 0) samples.push(v);
+      const g = await page.evaluate(() => window.__laas.stats?.gpuPasses ?? {});
+      const v = (g['render'] ?? 0) + (g['compute'] ?? 0);
+      if (v > 0) {
+        samples.push(v);
+        for (const [k, ms] of Object.entries(g)) {
+          if (!perKey.has(k)) perKey.set(k, []);
+          perKey.get(k)?.push(ms);
+        }
+      }
     }
     samples.sort((a, b) => a - b);
     const med = samples[Math.floor(samples.length / 2)] ?? 0;
     console.log(`[gpu] median=${med.toFixed(1)}ms over ${samples.length} samples`);
+    const medOf = (a: number[]): number => {
+      const s = [...a].sort((x, y) => x - y);
+      return s[Math.floor(s.length / 2)] ?? 0;
+    };
+    const rows = [...perKey.entries()]
+      .map(([k, a]) => [k, medOf(a)] as const)
+      .filter(([k, m]) => (k.startsWith('r.') || k.startsWith('c.')) && m >= 0.01)
+      .sort((a, b) => b[1] - a[1]);
+    for (const [k, m] of rows) console.log(`[gpu]   ${m.toFixed(2).padStart(7)} ms  ${k}`);
   }
 
   mkdirSync(dirname(out), { recursive: true });

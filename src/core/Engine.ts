@@ -7,6 +7,7 @@
 import { ACESFilmicToneMapping, PerspectiveCamera, Scene } from 'three';
 import { TimestampQuery, WebGPURenderer } from 'three/webgpu';
 import { buildRequiredLimits } from './Diagnostics';
+import { GpuProfiler } from './GpuProfiler';
 import type { EngineStats, LaasHooks } from './Hooks';
 import type { LaasParams } from './Params';
 
@@ -38,6 +39,7 @@ export class Engine {
   private settleWaiters: { frames: number; resolve: () => void }[] = [];
   private timestampsSupported = false;
   private timestampPending = false;
+  private profiler: GpuProfiler | null = null;
 
   private constructor(renderer: WebGPURenderer, params: LaasParams, hooks: LaasHooks) {
     this.renderer = renderer;
@@ -96,6 +98,7 @@ export class Engine {
 
     const engine = new Engine(renderer, params, hooks);
     engine.timestampsSupported = (hooks.diag?.features ?? []).includes('timestamp-query');
+    if (engine.timestampsSupported) engine.profiler = new GpuProfiler(renderer);
 
     window.addEventListener('resize', () => {
       engine.camera.aspect = window.innerWidth / window.innerHeight;
@@ -163,15 +166,22 @@ export class Engine {
     s.triangles = this.renderer.info.render.triangles;
     s.frame = this.frameCounter++;
 
-    if (this.timestampsSupported && this.frameCounter % 10 === 0 && !this.timestampPending) {
+    // resolve EVERY frame: the 2048-query pool only resets its write index
+    // on resolve — the old every-10-frames cadence overflowed it (≈100
+    // timed contexts/frame), killing per-pass attribution and warning once
+    if (this.timestampsSupported && !this.timestampPending) {
       this.timestampPending = true;
       Promise.all([
         this.renderer.resolveTimestampsAsync(TimestampQuery.RENDER),
         this.renderer.resolveTimestampsAsync(TimestampQuery.COMPUTE),
       ])
         .then(() => {
-          s.gpuPasses['render'] = this.renderer.info.render.timestamp;
-          s.gpuPasses['compute'] = this.renderer.info.compute.timestamp;
+          if (this.profiler) {
+            this.profiler.collect(s.gpuPasses);
+          } else {
+            s.gpuPasses['render'] = this.renderer.info.render.timestamp;
+            s.gpuPasses['compute'] = this.renderer.info.compute.timestamp;
+          }
         })
         .catch(() => {
           /* timestamps unsupported mid-run — ignore */

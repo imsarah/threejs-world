@@ -7,6 +7,7 @@
 
 import type { DirectionalLight, PerspectiveCamera, Texture } from 'three';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
+import { CachedCsmShadowNode } from './CsmCached';
 import {
   Fn,
   If,
@@ -147,14 +148,19 @@ export function setupSunShadows(
     (sun.shadow as unknown as { filterNode: unknown }).filterNode = filter;
   }
 
-  // shadow-debug bisects: ?csmcasc=1 single cascade, ?csmfade=0 hard splits
+  // shadow-debug bisects: ?csmcasc=1 single cascade, ?csmfade=0 hard splits,
+  // ?shadowcache=0 re-renders every cascade every frame (perf A/B)
   const q = new URLSearchParams(window.location.search);
-  const csm = new CSMShadowNode(sun, {
+  const csmOpts = {
     cascades: Math.max(1, Math.min(4, Number(q.get('csmcasc') ?? 4))),
     maxFar,
-    mode: 'practical',
+    mode: 'practical' as const,
     lightMargin,
-  });
+  };
+  const csm =
+    q.get('shadowcache') === '0'
+      ? new CSMShadowNode(sun, csmOpts)
+      : new CachedCsmShadowNode(sun, csmOpts);
   csm.fade = q.get('csmfade') !== '0';
   (sun.shadow as unknown as { shadowNode: unknown }).shadowNode = csm;
 

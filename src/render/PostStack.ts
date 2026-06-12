@@ -46,6 +46,7 @@ import {
   velocity,
 } from 'three/tsl';
 import type { Engine } from '../core/Engine';
+import { tagGpu } from '../core/GpuProfiler';
 import type { Froxels } from '../gpu/passes/Froxels';
 import { hash12 } from '../gpu/noise/NoiseTSL';
 import type { NF, NV3, NV4 } from '../gpu/TSLTypes';
@@ -96,6 +97,9 @@ export class PostStack {
     const camPosW = vec3(uCamPos);
 
     const scenePass = pass(scene, camera);
+    // per-pass GPU profiler label (texture stays 'output' — getTextureNode
+    // looks textures up by name)
+    tagGpu(scenePass.renderTarget as object, 'scene');
     // ?postmin=1 — bisect probe: bare scene pass through the pipeline, no
     // MRT/effects. If shadows survive here but not in the full stack, an
     // effect node is the culprit; if they die here, pass() itself is.
@@ -141,6 +145,7 @@ export class PostStack {
         return vec4(cl.color, cl.alpha);
       })();
       const cloudRtt = rtt(cloudLayer);
+      tagGpu((cloudRtt as unknown as { renderTarget: object }).renderTarget, 'clouds.half');
       const sizeClouds = (): void => {
         const dpr = renderer.getPixelRatio();
         cloudRtt.setSize(
@@ -386,6 +391,7 @@ export class PostStack {
         return res;
       })();
       const bounceRtt = rtt(bounceLayer);
+      tagGpu((bounceRtt as unknown as { renderTarget: object }).renderTarget, 'bounce.half');
       const sizeBounce = (): void => {
         const dpr = renderer.getPixelRatio();
         bounceRtt.setSize(

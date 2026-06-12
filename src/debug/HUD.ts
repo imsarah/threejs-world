@@ -64,6 +64,15 @@ export class Hud {
       `gpu render ${s.gpuPasses['render']?.toFixed(2) ?? '–'} ms  compute ${s.gpuPasses['compute']?.toFixed(2) ?? '–'} ms`,
       `cam ${c.x.toFixed(1)}, ${c.y.toFixed(1)}, ${c.z.toFixed(1)}`,
     ];
+    // per-pass GPU attribution (spec §6 HUD requirement; Phase 7 perf)
+    const passes = Object.entries(s.gpuPasses)
+      .filter(([k, v]) => (k.startsWith('r.') || k.startsWith('c.')) && v >= 0.005)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 16);
+    if (passes.length > 0) {
+      lines.push('—');
+      for (const [k, v] of passes) lines.push(`${v.toFixed(2).padStart(6)} ${k}`);
+    }
     const counterKeys = Object.keys(s.counters);
     if (counterKeys.length > 0) {
       lines.push('—');
