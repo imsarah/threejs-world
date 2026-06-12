@@ -329,16 +329,63 @@ cov 0.62), contact shadows (?ablate=contact to A/B), black facets root-caused to
   (esp. river width/coverage now matching their "too much water" ask);
   wind feel (amplitude/speed live); fog density taste (?fog=N); particle
   visibility. Shadow-flicker live check still outstanding from Phase 5.
-- **NEXT (user-confirmed 2026-06-12): PHASE 7 PERF.** User has "serious
-  feedback on the direction" for perf improvements — they will deliver
-  it right after compacting the conversation. DO NOT pick a perf
-  strategy before reading that message; rehydrate, then wait for/read
-  their direction first. Current perf state: ~22-30 ms GPU @1080p mixed
-  framings (single samples; re-baseline with --gpusample medians);
-  known whales from the earlier attribution: veg main raster ~15 ms
-  (card overdraw/hero ring), bloom ~5 ms, water SSR loop; batch-2 added
-  +2 vertex taps to wind, g3 far-grass layer (~10-25k tufts), grass
-  normalTex tap, splat sheen — all unprofiled.
+- **PHASE 7 PERF — USER DIRECTIVE (2026-06-12, BINDING; overrides the
+  spec's 60fps@1440p floor upward):**
+  - User: "Performance is dogshit. On my M1 max the FPS is around
+    10-15." (their live interactive session; headless 1080p shots
+    measured 22-30 ms GPU = 33-45 fps — gap is likely window size/DPR
+    ~1.5-2 on the 3456×2234 display + TRAA history + motion. REPRODUCE
+    THEIR SETUP FIRST when measuring.)
+  - "Maximise performance WITHOUT sacrificing any of the visible
+    detail." A UE5 scene of this complexity "would easily hit 120FPS —
+    the issue isn't the scene or visible detail complexity. Everything
+    in the render pipe must be optimized the hell out of WITHOUT
+    sacrificing ANY quality."
+  - FORBIDDEN optimization class (their example): pulling the far
+    field / impostor distances closer — ANY change that reduces visible
+    detail, density, draw distance, or resolution. (So: no LOD-distance
+    pulls, no upscalers/dynamic res, no density cuts, no fog-as-cover.)
+  - "You WILL be iterating on non-quality-decreasing optimizations
+    until we hit 120FPS on my m1 max. This is not up to debate."
+    Target = 120 fps ≈ 8.3 ms frame (GPU AND CPU-submit) on M1 Max.
+  - PLAN (measure → rank → fix → re-measure, loop until 8.3 ms):
+    1. INSTRUMENT FIRST: finish HUD per-pass GPU timings (fix the
+       timestamp-query overflow warning); add per-pass labels around
+       every render/compute (cascades×casters, veg rings, water, froxel
+       scatter/integrate, GTAO+upsample, TRAA, bloom chain, grade,
+       caustics bake, particles, probe GI slices). --gpusample medians;
+       measure at the USER's real viewport (big window, DPR 2) AND
+       1440p, at the heaviest bookmarks (forest hero, gorge, vista).
+    2. CPU side: frame-loop profile (three.js submit overhead, 905
+       draws, per-frame uniform churn, indirect-draw validation) —
+       10-15 fps could be partly CPU-bound at DPR 2 + TRAA.
+    3. Candidate quality-preserving whales (validate against
+       measurements, not assumptions):
+       - VEG RASTER: depth-only ALPHA-TESTED PREPASS for cards/grass,
+         then color at depth-EQUAL → fragment shading runs ~once/px
+         (classic overdraw killer, zero visual change); tighter card
+         geometry hulls (trim transparent border off the quads — same
+         texels, less raster); front-to-back draw order per ring.
+       - SHADOWS: cache cascades — far cascades re-render every N
+         frames (sun static between ToD edits; identical output),
+         caster compaction already per-cascade.
+       - POST: merge bloom downsample chain into compute w/ shared
+         memory; merge grade/vignette/composite passes; GTAO already
+         half-res+bilateral.
+       - WATER: SSR hierarchical march / early-exit (same result,
+         fewer steps); skip SSR entirely on pixels with no water
+         (stencil/mask).
+       - FROXELS: skip scatter march where T≈0 early-exit; halve Z
+         slices ONLY if output-identical (verify by diff).
+       - WIND/VERTEX: consolidate the 5 texture taps (gust/lag/
+         exposure/flutter share fetches where math-identical).
+       - Probe GI time-slicing budget; caustics bake is 0.05 ms (fine).
+    4. After EACH change: tsc, visual diff at 3 bookmarks (must be
+       pixel-equivalent or imperceptible), --gpusample re-measure,
+       commit with numbers.
+  - STATUS of pass 1 (pre-directive): 48→32 ms at forest-hero 1080p
+    (half-res GTAO + bilateral, ring-1 casters to near cascades only,
+    ?ablate=casters). Both changes quality-checked.
 - PHASE 7 PROGRESS (2026-06-12): perf pass 1 DONE — 48→32 ms GPU at the
   forest-hero framing (half-res GTAO + joint-bilateral upsample −12 ms;
   ring-1 casters to near cascades only −4 ms; ?ablate=casters knob).
