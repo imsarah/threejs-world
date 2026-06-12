@@ -64,13 +64,14 @@ import {
   vec4,
 } from 'three/tsl';
 import { bilerpVec2Buffer, uvToGrid } from '../gpu/BufferSample';
+import { PERIOD_FBM } from '../gpu/passes/NoiseBake';
 import type { NF, NV2, NV3, NV4 } from '../gpu/TSLTypes';
 import type { Heightfield } from '../world/Heightfield';
 import { WORLD_SIZE } from '../world/WorldConst';
 import { FLOW_CYC } from './WaterMaterial';
 
 /** world meters spanned by one caustic tile */
-export const CAUSTIC_TILE = 6;
+export const CAUSTIC_TILE = 11;
 const RES = 512;
 
 /**
@@ -80,13 +81,15 @@ const RES = 512;
  * that forms centimeter-to-decimeter caustic cells on stream beds.
  */
 const WAVES = [
-  { n: [5, 2], phi: 2.13 },
-  { n: [-3, 6], phi: 5.71 },
-  { n: [8, -3], phi: 0.97 },
-  { n: [-7, -7], phi: 4.32 },
-  { n: [12, 5], phi: 1.58 },
-  { n: [-4, 14], phi: 3.05 },
-  { n: [17, -11], phi: 5.02 },
+  { n: [9, 4], phi: 2.13 },
+  { n: [-5, 11], phi: 5.71 },
+  { n: [15, -5], phi: 0.97 },
+  { n: [-13, -13], phi: 4.32 },
+  { n: [22, 9], phi: 1.58 },
+  { n: [-7, 26], phi: 3.05 },
+  { n: [31, -20], phi: 5.02 },
+  { n: [25, 17], phi: 1.21 },
+  { n: [-18, 28], phi: 3.77 },
 ] as const;
 const A0 = 0.0042; // m, amplitude of the longest wave
 /**
@@ -219,12 +222,25 @@ export function causticTint(wp: NV3, depthIn?: NF): NF {
   const offA = vel.mul(ph1.div(FLOW_CYC));
   const offB = vel.mul(ph2.div(FLOW_CYC)).add(vec2(2.17, 5.31));
 
+  // STATIC domain warp before the tile lookup: ±~0.9 m fbm-gradient
+  // offsets over ~31 m features relabel space per tile instance, so the
+  // repeat never lines up (user: "weird very repetitive pattern close to
+  // the camera"). Time-invariant — the advection still flows through it.
+  let surfW = surf;
+  const nA = hf.noiseA;
+  if (nA) {
+    const wgrad = (
+      texture(nA, surf.div(31 * PERIOD_FBM), 0) as unknown as NV4
+    ).zw;
+    surfW = surf.add(wgrad.clamp(-2, 2).mul(0.45)) as typeof surf;
+  }
+
   // defocus with depth: push down the mip chain (texture is trilinear).
   // Gentle slope — clear water keeps cells crisp through ~1.5 m; ·2.0
   // washed the pattern to invisibility below knee depth.
   const lod = clamp(depth.mul(0.55), 0, 3);
   const tap = (off: NV2): NF =>
-    (texture(bake.tex, surf.sub(off).div(CAUSTIC_TILE)).bias(lod) as unknown as NV4).x;
+    (texture(bake.tex, surfW.sub(off).div(CAUSTIC_TILE)).bias(lod) as unknown as NV4).x;
   const pat = mix(tap(offA), tap(offB), w2);
 
   const submerged = smoothstep(0.025, 0.09, depth);
