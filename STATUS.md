@@ -488,24 +488,54 @@ cov 0.62), contact shadows (?ablate=contact to A/B), black facets root-caused to
     sway (proper velocity instead of variance-clip rescue);
     (iii) user live-confirm the lag is gone (interactive mechanism 2
     can't be probed headless).
-    1. POST-CHAIN CONSOLIDATION (~15 ms of full/half-res quad passes):
-       merge GTAO + bounce + clouds.half into ONE half-res MRT pass
-       (shared depth/position reconstruction); contact-shadow march
-       early-exit when occlusion saturates; audit TRAA resolve cost
-       (stock ~4.4 ms — consider a leaner custom resolve LAST, quality
-       risk). Bloom is stall-dominated, NOT a real whale (ablation: fps
-       flat) — skip.
-    2. Re-attribute bm1 (water SSR march/early-exit) and bm3 (impostor/
-       far-field) with the per-pass table at the user viewport.
-    3. CPU round 2 if it resurfaces: Bindings._update (~2.6 ms/frame,
-       per-bind-group uniform machinery) — uniform-group consolidation.
-    4. BundleGroup REVERTED — three 0.184 static bundles recorded before
-       async pipeline compiles (empty forests), ignore renderOrder
-       inside (prepass twins draw after color), and cascade-camera
-       bundles bypassed per-cascade caster layers (GPU 2×). Re-try only
-       with a fixed three or a hand-rolled bundle path.
-    5. The 120 fps directive at 2592×1676 native on M1 Max is ~8.3 ms
-       wall — after exhausting 1-4 plus format/bandwidth passes
+    1. POST-CHAIN CONSOLIDATION — DONE 2026-06-14 (commits c21867c,
+       955d9ab): (a) contact-shadow march first-hit-wins early exit
+       (contribution strictly decreases with step index ⇒ identical
+       output; megaquad 1.64→1.51 ms at bm7 1728×1117); (b) clouds +
+       GTAO + bounce merged into ONE half-res MRT pass (HalfResMrt.ts;
+       Gtao.ts = faithful GTAONode port — sky discard becomes ao=1;
+       attachments map by TEXTURE NAME; fragmentNode must be the MRTNode
+       DIRECTLY or the WGSL output struct loses members). Per-pass at
+       bm4 2592×1676: clouds.half 2.75 + GTAO 2.42 + bounce ~0.5 →
+       half.mrt 2.75 (−2.4 ms encoder spans, one raster). All ablate
+       combos verified. Bloom stays stall-dominated phantom — skipped.
+    2. RE-ATTRIBUTION DONE (2026-06-14, user viewport, warm): NO
+       per-bookmark whale — r.scene ≈ 11.8-12.3 ms at bm1/bm3/bm4 alike
+       (water SSR and impostor far-field are NOT standouts); GPU passes
+       overlap heavily (TBDR) and wall tracks ~24 ms while GPU-sum reads
+       28-44. **cpu.submit ≈ 12-15 ms IS the binding constraint for the
+       120 fps directive** (resolution-independent, draw-count driven).
+    3. CPU ROUND 2 — IN PROGRESS. CDP re-profile (bm4, 200 frames):
+       Bindings._update 2.64 + UniformsGroup.update 1.1 + nodes
+       updateForRender 1.6 + updateMatrixWorld 0.67 (static objects
+       recomposing matrices!) + _projectObject 0.51 ms/frame.
+       LANDED (0f73791): runiform() = uniform().setGroup(renderGroup) —
+       per-object group walks become once-per-shader-per-render-call;
+       audited render-only set tagged (wind/vegViewPos/instancing
+       bases/water clipmap/sun override/post+gtao uniforms). Effect at
+       this slice size within thermal noise — the BULK of material
+       uniforms is still object-group. NEXT STEPS, ranked:
+       (a) expanded runiform sweep: audit the compute-shared set
+       (camU cull copies, cloud density/drift→shadow bake, particle
+       respawn, probe gather, caustics focusK) — either split material
+       vs compute uniforms or verify compute update ordering, then move
+       the heavy per-material params (probe-GI patch uniforms, species
+       params are CONSTANTS — ideal); measure with cooled ABAB only.
+       (b) matrixAutoUpdate=false sweep for static meshes (veg pools,
+       terrain tiles, prepass twins) — 0.67 ms/frame of pure waste.
+       (c) draw-count reduction: hand-rolled bundle path (BundleGroup
+       broken in 0.184: records before async compiles, ignores
+       renderOrder, bypassed per-cascade caster layers — REVERTED).
+    4. TRAA CUSTOM RESOLVE (~4.4 ms at user viewport + the largest
+       remaining post item): now DOUBLY motivated — leaner resolve AND
+       Catmull-Rom history sampling to recover the last ~10-18% HF vs
+       the SSAA reference (see cloud-lag entry). Quality-risk item:
+       full shot battery + HF-energy checks against 4×SSAA required.
+    5. shadow.c0 renders EVERY frame (period-1 cascade): 4.5-7.9 ms
+       encoder span at user viewport — investigate quality-invariant
+       reductions (caster set already compacted; check span vs stall).
+    6. The 120 fps directive at 2592×1676 native on M1 Max is ~8.3 ms
+       wall — after exhausting 3-5 plus format/bandwidth passes
        (R11G11B10 post RTs, f16 math in post), present the data; the
        user pre-authorized a 60 fps floor ONLY once every
        quality-invariant path is exhausted.
@@ -521,9 +551,13 @@ cov 0.62), contact shadows (?ablate=contact to A/B), black facets root-caused to
     incl. dependency stalls (bloom 'cost' 9-13 ms ablated to ~1 ms wall:
     fps flat) — rank with them, VERIFY with wall fps + ablation deltas;
     (c) pixel-equivalence checks MUST use tools/shoot.ts --framealign N
-    (+ --wind 0): unaligned captures differ 20-27% from frame-indexed
-    jitter alone (deterministic floor when aligned: 0.2-0.5%; water/
-    particles still animate on wall-clock TSL time — exclude or accept);
+    + --wind 0 + --lockexp 1: unaligned captures differ 20-27% from
+    frame-indexed jitter alone, and WITHOUT lockexp the auto-exposure
+    feedback amplifies wall-clock particle/water drift between capture
+    times into whole-frame shifts (a 0.04%-real diff read 9.85% — flat
+    surfaces cross the threshold coherently and look like a lighting
+    change). Deterministic floor when fully pinned: ≤0.2%. Water itself
+    still animates on wall-clock TSL time — exclude or accept;
     (d) headless fps ≈ wall only when GPU-bound; with the prepass, bm4
     became CPU-submit-bound and 10 ms GPU savings moved fps <1.
 - KNOWN LIMITATION (logged 2026-06-12, deep-dived): large-lake FAR RIM
