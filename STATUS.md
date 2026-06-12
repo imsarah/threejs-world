@@ -260,15 +260,18 @@ cov 0.62), contact shadows (?ablate=contact to A/B), black facets root-caused to
   planar-lake-pass priority (was optional polish) — the old "thin dark
   band" diagnosis (min-reduced far field) is the same symptom family but
   the dominant term at bookmark 2 is the reflection fallback.
-- **NEW ARTIFACT (spotted in batch-2 verification shots, 2026-06-12):
-  smooth featureless gray-green BLOB ROCKS** — perfectly smooth shaded
-  blobs with no texture/strata, seen in bm4 foreground (big one), the
-  meadow top-down (several ~1 m blobs on grass), gallery-of-suspects:
-  StoneM/StoneL far ring swap at 120 m (EX_R1_FAR low-detail rock), a
-  rock material variant losing its detail nodes, or shadow-proxy-like
-  geometry drawing in main view. INVESTIGATE NEXT (?clsdbg=1 flat-colors
-  classes; ?ablate=veg isolates). Also noticed bm7 (forest interior)
-  frames a trunk close-up — re-pose that bookmark during Phase-7
+- **BLOB ROCKS — DIAGNOSED (2026-06-12), fix queued as polish.** The
+  smooth featureless gray blobs (bm4 foreground, meadow top-down) are
+  cls 20/21 scatter stones — ?clsdbg=1 flat-colored them hue-220 blue =
+  StoneL/StoneM. They sit WITHIN the detailed ring (≤120 m), so it's the
+  source geometry, not an LOD swap: VegLibrary stonePools build StoneM
+  with the 'cobble' preset (d1:2/d2:1) and StoneL 'boulder' — a smooth
+  river-rounded cobble at 0.5–1 m scale on a meadow reads as a shaded
+  blob. FIX (when picked up): meadow-scale stones need the craggy/
+  boulder-style surface (strata + fracture detail) or a detail-level
+  bump in buildRock for 'cobble' ≥ ~0.4 m; verify vs bm4 foreground.
+  Predates batch 2 (visible in the first fog-before shot). Also: bm7
+  (forest interior) frames a trunk close-up — re-pose during Phase-7
   bookmark polish.
 - **PHASE 6 COMPLETE (2026-06-12, commits eef662f..51aba85) — all six
   systems built, verified by shots, gate DELTA written.** What landed
