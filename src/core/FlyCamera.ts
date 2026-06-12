@@ -67,6 +67,9 @@ export class FlyCamera {
       this.camera.updateProjectionMatrix();
     }
     this.applyRotation();
+    // recompose matrixWorld/matrixWorldInverse NOW: subsystems copy camera
+    // state in their own updateFns and must never read a stale matrix
+    this.camera.updateMatrixWorld();
   }
 
   getPose(): CamPose {
@@ -113,5 +116,7 @@ export class FlyCamera {
     const damp = 1 - Math.exp(-dt * 9);
     this.vel.lerp(MOVE.multiplyScalar(target), damp);
     this.camera.position.addScaledVector(this.vel, dt);
+    // matrices fresh for every subsystem updateFn that runs after this one
+    this.camera.updateMatrixWorld();
   }
 }

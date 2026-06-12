@@ -49,7 +49,7 @@ import type { Engine } from '../core/Engine';
 import { tagGpu } from '../core/GpuProfiler';
 import type { Froxels } from '../gpu/passes/Froxels';
 import { hash12 } from '../gpu/noise/NoiseTSL';
-import type { NF, NV3, NV4 } from '../gpu/TSLTypes';
+import type { NF, NV2, NV3, NV4 } from '../gpu/TSLTypes';
 import type { Atmosphere } from '../sky/Atmosphere';
 import { CLOUD_BOTTOM, CLOUD_TOP, type Clouds } from '../sky/Clouds';
 import { GradeUniforms, gradeParamsAt } from './ColorScript';
@@ -73,7 +73,8 @@ export class PostStack {
     // perf attribution: ?ablate=clouds,ao,taa,bloom disables stages
     const ablate = new Set((q.get('ablate') ?? '').split(','));
     // debug probes need raw values — tone mapping would garble them
-    renderer.toneMapping = cloudview ? NoToneMapping : AgXToneMapping;
+    const skyveldbg = q.get('skyveldbg') !== null && q.get('skyveldbg') !== '';
+    renderer.toneMapping = cloudview || skyveldbg ? NoToneMapping : AgXToneMapping;
     renderer.toneMappingExposure = 1.0;
     const frameU = uniform(0);
     // The post quad pass binds its own orthographic camera: `cameraPosition`,
@@ -86,14 +87,29 @@ export class PostStack {
     const uCamWorld = uniform(new Matrix4());
     const uProj = uniform(new Matrix4());
     const uView = uniform(new Matrix4());
-    engine.onUpdate(() => {
+    // previous-frame view/projection — sky-pixel velocity for TRAA (see below)
+    const uPrevView = uniform(new Matrix4());
+    const uPrevProj = uniform(new Matrix4());
+    // Synced at RENDER time, not in onUpdate: updateFns run in registration
+    // order and the camera movers (FlyCamera, flythrough) mutate the camera
+    // AFTER scene-built subsystems registered — an onUpdate copy here read a
+    // ONE-FRAME-STALE pose during interactive motion, shifting clouds/aerial/
+    // froxels/contact against the freshly-posed geometry every moved frame
+    // (the user-visible "clouds shift with the camera" half of the cloud-lag
+    // bug). render() runs after ALL updateFns — immune to registration order.
+    let firstSync = true;
+    this.syncCamera = (): void => {
       frameU.value = (frameU.value + 1) % 1024;
+      camera.updateMatrixWorld(); // compose pending pose mutations NOW
+      uPrevView.value.copy(firstSync ? camera.matrixWorldInverse : uView.value);
+      uPrevProj.value.copy(firstSync ? camera.projectionMatrix : uProj.value);
+      firstSync = false;
       uCamPos.value.copy(camera.position);
       uProjInv.value.copy(camera.projectionMatrixInverse);
       uCamWorld.value.copy(camera.matrixWorld);
       uProj.value.copy(camera.projectionMatrix);
       uView.value.copy(camera.matrixWorldInverse);
-    });
+    };
     const camPosW = vec3(uCamPos);
 
     const scenePass = pass(scene, camera);
@@ -116,15 +132,14 @@ export class PostStack {
       this.exposureKernel = Fn(() => {})().compute(1);
       return;
     }
-    scenePass.setMRT(
-      mrt({
-        output,
-        velocity,
-      }),
-    );
+    // velocity MRT only for the ?skyveldbg diagnostic: TRAA consumes analytic
+    // camera reprojection (see the TRAA section — the buffer is garbage for
+    // positionNode-displaced geometry anyway), so the default path would
+    // write+clear a full-res rg16f attachment nobody reads
+    scenePass.setMRT(mrt(skyveldbg ? { output, velocity } : { output }));
     const beauty = scenePass.getTextureNode('output');
     const depthTex = scenePass.getTextureNode('depth');
-    const velocityTex = scenePass.getTextureNode('velocity');
+    const velocityTex = skyveldbg ? scenePass.getTextureNode('velocity') : null;
 
     // --- half-res volumetric cloud layer (own quad pass) -----------------------
     // The march is by far the most expensive screen-space work; running it at
@@ -410,9 +425,52 @@ export class PostStack {
     }
 
     // --- TRAA ----------------------------------------------------------------------
+    // TRAA's history reprojection consumed the velocity MRT, which is broken
+    // here on BOTH ends (user bug "clouds lag the camera"; probe:
+    // tools/probe-cloudlag.ts):
+    //  - sky pixels rasterize no geometry → velocity = clear value 0 → under
+    //    rotation, history blended clouds from the WRONG screen position at
+    //    95% weight (sky-band diff 12.2% vs ablate=taa 0.2%);
+    //  - geometry velocity is GARBAGE for everything positioned by custom
+    //    positionNode shader displacement (terrain CDLOD morph, instanced
+    //    veg, canopy shell — i.e. nearly every pixel): three's VelocityNode
+    //    projects the raw undisplaced positionLocal, so the buffer reads
+    //    |v|≈0.5-1 NDC with a STATIC camera (?skyveldbg=raw paints it) and
+    //    TRAA rejected history (weight→1) on most geometry.
+    // Fix: feed TRAA full analytic camera reprojection from each pixel's own
+    // depth — exact for a static world INCLUDING translation parallax; the
+    // far-plane limit covers sky (clouds at quasi-infinity) with no branch.
+    // Object self-motion (wind sway, water) isn't captured and falls back to
+    // variance clipping — same as before, but now with valid history.
+    // Injected through the velocityNode.load() seam (TRAANode samples
+    // velocity exactly once, at the closest-depth neighbor texel) and emitted
+    // in VelocityNode's convention: ndcCur−ndcPrev in y-up NDC, which TRAA
+    // maps to a uv delta via ×(0.5, −0.5). uv space is TOP-LEFT origin:
+    // getViewPosition flips v internally (y.oneMinus,
+    // PostProcessingUtils.js) so the forward projection must flip back,
+    // exactly like three's getScreenPosition — without it the reprojection
+    // is vertically MIRRORED (caught by ?skyveldbg: magenta zero-error
+    // stripe on the mirror axis).
+    const velReproject = (texel: NV2): NV2 => {
+      // texel = uv*size, already carrying the +0.5 center. screenSize == the
+      // full-res MRT/resolve dims in every pass that calls this
+      // (velocityTex.size() on the MRT attachment returned 0 — NaN uvs).
+      const uvv = texel.div(screenSize);
+      const d = (depthTex.load(texel as unknown as Parameters<typeof depthTex.load>[0]) as unknown as NV4).x;
+      const posV = getViewPosition(uvv, d, uProjInv);
+      const posW = uCamWorld.mul(vec4(posV, 1)).xyz;
+      const posVPrev = uPrevView.mul(vec4(posW, 1)).xyz;
+      const clipPrev = uPrevProj.mul(vec4(posVPrev, 1));
+      const uvPrevRaw = clipPrev.xy.div(clipPrev.w).mul(0.5).add(0.5);
+      const uvPrev = vec2(uvPrevRaw.x, uvPrevRaw.y.oneMinus());
+      return uvv.sub(uvPrev).mul(vec2(2, -2));
+    };
+    const velLoad = (texel: NV2): NV4 =>
+      vec4(velReproject(texel), 0, 1) as unknown as NV4;
+    const reprojectedVelocity = { load: velLoad } as unknown as typeof depthTex;
     const taaed = ablate.has('taa')
       ? (withBounce as unknown as ReturnType<typeof traa>)
-      : traa(withBounce, depthTex, velocityTex, camera);
+      : traa(withBounce, depthTex, reprojectedVelocity, camera);
 
     // --- bloom -----------------------------------------------------------------------
     const taaedRgb = (taaed as unknown as NV4).rgb;
@@ -499,11 +557,35 @@ export class PostStack {
       return c.mul(vig).add(grain);
     })();
 
+    // ?skyveldbg=err|raw|ana — TRAA velocity diagnostics over far geometry
+    // (>1.5 km): `ana` paints the analytic camera reprojection (static
+    // camera ⇒ black; this is what TRAA consumes), `raw` paints the velocity
+    // MRT (broken for positionNode-displaced geometry — reads saturated even
+    // static), `err` their difference. R = x ×20, G = y ×20, B = mask.
+    const skyVelDbgView =
+      skyveldbg && velocityTex
+        ? Fn((): NV3 => {
+            const texel = screenUV.mul(screenSize);
+            const raw = (velocityTex.load(texel as unknown as Parameters<typeof velocityTex.load>[0]) as unknown as NV4).xy;
+            const d = (depthTex.load(texel as unknown as Parameters<typeof depthTex.load>[0]) as unknown as NV4).x;
+            const isSky = d.lessThanEqual(1e-7).or(d.greaterThanEqual(0.9999999));
+            const dist = getViewPosition(screenUV, d, uProjInv).length();
+            const farGeo = isSky.not().and(dist.greaterThan(1500));
+            const ana = velReproject(texel);
+            const mode = q.get('skyveldbg');
+            const v = mode === 'raw' ? raw : mode === 'ana' ? ana : ana.sub(raw);
+            const err = v.abs().mul(20);
+            const mask = farGeo.select(float(1), float(0));
+            return vec3(err.x.mul(mask), err.y.mul(mask), mask);
+          })()
+        : null;
+
     this.post = new RenderPipeline(renderer);
     // chain bisect: 9 = constant at pipeline output, 8 = aerial only (no
     // AO/TRAA/bloom/exposure/grade), default = full chain
     this.post.outputNode =
-      cloudview === '9' ? vec3(1, 0, 0)
+      skyVelDbgView !== null ? skyVelDbgView
+      : cloudview === '9' ? vec3(1, 0, 0)
       : cloudview !== null && cloudview !== '' ? aerialNode
       : graded;
 
@@ -511,6 +593,11 @@ export class PostStack {
   }
 
   private uniformsRefresh: () => void = () => undefined;
+  private syncCamera: () => void = () => undefined;
+  // ?lockexp=1 — freeze auto-exposure at its boot value: motion probes diff
+  // frames across runs and the meter's adaptation transient otherwise
+  // dominates the signal (probe-cloudlag pitch runs)
+  private lockExposure = new URLSearchParams(window.location.search).get('lockexp') === '1';
 
   setTimeOfDay(tod: number): void {
     this.grade.apply(gradeParamsAt(tod));
@@ -519,10 +606,12 @@ export class PostStack {
 
   /** call once per frame after render — updates exposure feedback */
   meter(renderer: Renderer): void {
+    if (this.lockExposure) return;
     renderer.compute(this.exposureKernel);
   }
 
   render(): void {
+    this.syncCamera(); // after ALL updateFns — camera pose is final for this frame
     this.post.render();
   }
 }

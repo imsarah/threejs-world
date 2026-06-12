@@ -42,6 +42,13 @@ async function boot(): Promise<void> {
   bootUI.set(0.08, 'creating renderer');
   const engine = await Engine.create(params, hooks);
 
+  // FlyCamera's update MUST register before any scene system: updateFns run
+  // in registration order, and subsystems copy camera state in their own
+  // updates — the mover has to run first or every copy is one frame stale
+  // during interactive motion (clouds/aerial visibly lagged the camera).
+  const fly = new FlyCamera(engine.camera, engine.renderer.domElement);
+  engine.onUpdate((dt) => fly.update(dt));
+
   const seed = new WorldSeed(params.seed);
   registerScene('sanity', buildSanityScene);
   registerScene('terrain', buildTerrainScene);
@@ -59,8 +66,6 @@ async function boot(): Promise<void> {
   };
   await buildScene(params.scene, ctx);
 
-  const fly = new FlyCamera(engine.camera, engine.renderer.domElement);
-  engine.onUpdate((dt) => fly.update(dt));
   if (params.cam !== null) {
     const pose = parseCamString(params.cam);
     if (pose) fly.setPose(pose);
