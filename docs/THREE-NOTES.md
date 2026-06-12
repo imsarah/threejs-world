@@ -88,3 +88,30 @@
   loop; extents are rotation-invariant, set in updateFrustums only).
 - **ShadowMap RTs all share texture.name 'ShadowMap'** and RenderTarget
   has NO id field — distinguish cascades by RT object identity (WeakMap).
+- **VelocityNode is blind to shader displacement**: it projects raw
+  `positionLocal` through model matrices (VelocityNode.js setup), so the
+  velocity MRT is GARBAGE for anything positioned by a custom positionNode
+  (CDLOD morph, instanced veg) — reads |v|~0.5-1 NDC with a static camera
+  and world. Any consumer (TRAA) silently rejects history there. Either
+  supply per-material velocity or feed analytic camera reprojection.
+- **TRAANode samples its velocityNode exactly once** —
+  `velocityNode.load(closestPositionTexel)` in the resolve — so a
+  duck-typed `{ load: (texel) => vec4 }` is a legitimate seam for custom
+  velocity (constructor arg only stored; the internal `_velocityNode`
+  jitter handshake uses the global `velocity` node independently).
+- **getViewPosition/getScreenPosition flip v internally** (uv is top-left
+  origin, NDC y-up — PostProcessingUtils.js): a hand-rolled forward
+  projection paired with getViewPosition MUST flip y back
+  (`uv.y.oneMinus()`) or reprojection comes out vertically MIRRORED
+  (symptom: zero-error stripe on the mirror axis, ?skyveldbg).
+- **PassTextureNode.size() on an MRT attachment returned 0** at least for
+  the velocity attachment (NaN uvs downstream) — use `screenSize` when the
+  pass renders at drawing-buffer resolution.
+- **TRAA + RenderPipeline jitter handshake**: setup wires
+  onBeforeRenderPipeline→setViewOffset / onAfterRenderPipeline→
+  clearViewOffset, so the scene camera is UNJITTERED between frames —
+  uniforms copied outside the pipeline render never carry jitter.
+- **Camera matrixWorld freshness**: mutating camera pose outside render
+  leaves matrixWorld stale until the renderer's updateMatrixWorld; copies
+  made in update callbacks must force `camera.updateMatrixWorld()` (also
+  refreshes matrixWorldInverse) or read one-frame-old matrices.

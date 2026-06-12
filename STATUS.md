@@ -438,25 +438,56 @@ cov 0.62), contact shadows (?ablate=contact to A/B), black facets root-caused to
     (~23) · bm7 38.0 (~26); cpu.submit 11.4-14.2; cpu.update 0.4.
     Session start (hot, bm4): 85.4 ms ≈ 12 fps. GPU-sums exceed wall
     where passes overlap (TBDR).**
-  - **BUG (user-reported 2026-06-13, older issue, irritating): CLOUDS LAG
-    CAMERA MOTION** — clouds visibly shift/smear for a frame or several
-    after the camera moves/rotates, then settle back to the correct
-    position once still. Candidate mechanisms, in likelihood order:
-    (a) TRAA history reprojection of cloud/sky pixels — clouds are
-    composited in the aerial pass INSIDE the TRAA input, but sky pixels
-    (depth = far) carry zero/garbage velocity, so during rotation the
-    history blends clouds from the wrong screen position and "catches
-    up" over the accumulation window (classic no-velocity TAA ghosting);
-    (b) the half-res cloud RTT renders from explicit uCamPos/uProjInv/
-    uCamWorld uniforms copied in engine.onUpdate — verify they can't be
-    one frame stale relative to the pass that samples the RTT (and that
-    the copied projection isn't carrying the PREVIOUS frame's TRAA
-    jitter offset — TRAA re-applies setViewOffset during render, after
-    our copy); (c) the depth-aware half-res upsample gate. DIAGNOSIS
-    FIRST STEP: A/B with ?ablate=taa while orbiting — if the lag
-    vanishes, it's (a) and the fix is proper sky-velocity (camera
-    rotation-derived velocity for far-depth pixels feeding TRAA), not
-    clamping hacks. Repro: any bookmark, swing the camera.
+  - **BUG RESOLVED (2026-06-14, commit 9728eee): CLOUDS LAG CAMERA
+    MOTION** — root-caused to THREE stacked mechanisms (probe:
+    tools/probe-cloudlag.ts — frame-locked orbit runs, same absolute
+    frame across runs so jitter index + frameU phase match; unaligned
+    in-session captures were 20-27% phase noise and useless):
+    (1) TRAA SKY VELOCITY ZERO (candidate a — confirmed): sky pixels
+    rasterize nothing, velocity MRT = clear 0 → resolve reprojected
+    history from the same screen UV at 95% weight → clouds smeared and
+    caught up over ~20 frames. Mid-pan-stop sky-band diff vs converged:
+    12.24% (TAA) vs 0.17% (ablate=taa) = conviction; fixed → clouds
+    region reads BLACK in the motion-stop diff.
+    (2) STALE CAMERA UNIFORMS (candidate b — real, different mechanism
+    than guessed): subsystems copy camera state in their own updateFns,
+    but FlyCamera registered LAST in main.ts — every copy (uCamPos/
+    uCamWorld/uProjInv/uView in PostStack; same pattern elsewhere) read
+    the PREVIOUS frame's pose during interactive motion while the
+    renderer posed geometry fresh at render time → clouds/aerial/
+    froxels/contact shifted against geometry by one frame of rotation.
+    setPose-driven probes can't reproduce this (they mutate between
+    frames) — it's interactive-only. FIX: PostStack syncs its camera
+    uniforms at render() time (after ALL updateFns, immune to order),
+    FlyCamera registers FIRST and calls updateMatrixWorld() in
+    update()/setPose(). NOTE the jitter half of (b) was structurally
+    false: TRAA clears the view offset after every pipeline render, so
+    between-frame copies are always unjittered.
+    (3) DISCOVERED EN ROUTE — GEOMETRY VELOCITY GARBAGE: the velocity
+    MRT is broken for ALL positionNode-displaced geometry (terrain
+    CDLOD morph, instanced veg, canopy shell): three's VelocityNode
+    projects raw undisplaced positionLocal, so the buffer reads
+    |v|~0.5-1 NDC with a STATIC camera (?skyveldbg=raw paints it) →
+    TRAA history was REJECTED (weight→1) on most geometry pixels all
+    along — TAA was silently OFF for geometry. FIX: TRAA's velocity
+    input is now full analytic camera reprojection from each pixel's
+    own depth (exact for the static world incl. translation parallax;
+    far-plane limit covers sky, no branch; wind-sway/water self-motion
+    falls to variance clipping as before, now with valid history).
+    VERIFIED vs 4×SSAA ground truth (HF Laplacian energy, 3 crops):
+    HEAD read ~144-198% of reference (aliasing posing as sharpness),
+    fixed reads 82-91% — textbook TAA reconstruction, big net quality
+    win. Residual softness recovery (Catmull-Rom history sampling)
+    folds into the TRAA-resolve audit below. Velocity MRT attachment
+    dropped from the default path (unread rg16f write+clear saved);
+    ?skyveldbg=raw|ana|err keeps the diagnostic. ?lockexp=1 freezes
+    auto-exposure (pitch-orbit probes were exposure-confounded).
+    FOLLOW-UPS: (i) pixel-equivalence floors RE-BASELINE after this
+    commit (TAA accumulating on geometry changes converged output);
+    (ii) optional future: per-material object motion vectors for wind
+    sway (proper velocity instead of variance-clip rescue);
+    (iii) user live-confirm the lag is gone (interactive mechanism 2
+    can't be probed headless).
     1. POST-CHAIN CONSOLIDATION (~15 ms of full/half-res quad passes):
        merge GTAO + bounce + clouds.half into ONE half-res MRT pass
        (shared depth/position reconstruction); contact-shadow march
@@ -755,3 +786,17 @@ split view, ground-clamped camera helper, silhouette/tiling gate + DELTA.md.
   shots with different --settle counts sample different wind/water phases
   — that's the cheap motion A/B; anything that must stay deterministic
   per-shot (cloud drift) must run on WORLD time via a CPU uniform.
+- UPDATE-ORDER CONTRACT (cloud-lag postmortem): updateFns run in
+  registration order; anything that MOVES the camera must register before
+  anything that COPIES camera state, and movers must updateMatrixWorld()
+  (matrixWorld otherwise recomposes only at render). FlyCamera registers
+  first in main.ts; PostStack ignores the contract entirely by syncing at
+  render() time. The flythrough (installBookmarks, registered late in the
+  scene build) still moves the camera after earlier-registered subsystem
+  copies (cull/water/froxels) — one-frame staleness there is bounded
+  (overlap bands absorb it) but don't add new screen-space consumers to
+  onUpdate; sync them at render time like PostStack.
+- Headless setPose probes CANNOT reproduce interactive camera-motion bugs
+  in updateFn-order territory: setPose mutates between frames, so every
+  updateFn sees the fresh pose. Mid-update mutation only happens via
+  FlyCamera/flythrough — reason from code order, verify live.
