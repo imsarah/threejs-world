@@ -321,8 +321,11 @@ export class GroundRing {
         .mul(0.12)
         .oneMinus(),
     ) as typeof irr;
+    // probe field varies at ≥1.5 m — vertex-stage eval on ≤0.3 m carpet
+    // geometry is identical, and skips 4 texture fetches per overdrawn px
+    const irrV = varying(irr as unknown as Parameters<typeof varying>[0]);
     (mat as unknown as { setupLightMap: () => unknown }).setupLightMap = () =>
-      new IrradianceNode(irr as unknown as ConstructorParameters<typeof IrradianceNode>[0]);
+      new IrradianceNode(irrV as unknown as ConstructorParameters<typeof IrradianceNode>[0]);
   }
 
   init(beechAtlas: DataTexture | null): void {
@@ -839,8 +842,17 @@ export class GroundRing {
     const upK = far
       ? (float(1) as NF)
       : smoothstep(8, 70, dist).mul(0.35).add(0.5);
+    // VERTEX-stage shading hoist (Phase 7 perf): every term below varies at
+    // ≥ blade scale (per-cell hashes, 1.5 m+ probe/canopy/heightfield
+    // fields) — evaluating them per fragment re-ran the ring storage reads,
+    // 4 hashes and 2 texture fetches for every overdrawn pixel of a 1–4 px
+    // blade. varying() moves them to the vertex stage; interpolation across
+    // a few-cm triangle is sub-quantization (verified by pixel diff).
+    const nBlendV = varying(
+      mix(nR.normalize(), tNrm, upK) as unknown as Parameters<typeof varying>[0],
+    ) as unknown as NV3;
     mat.normalNode = transformNormalToView(
-      mix(nR.normalize(), tNrm, upK).normalize() as unknown as NV3,
+      nBlendV.normalize() as unknown as NV3,
     ) as unknown as typeof mat.normalNode;
 
     const t = uv().y as unknown as NF;
@@ -864,9 +876,15 @@ export class GroundRing {
     let albedo = mix(fresh, dry, dryK) as unknown as NV3;
     albedo = albedo.mul(patch.y.sub(0.5).mul(0.3).add(1)) as unknown as NV3;
     albedo = mix(albedo, vec3(0.018, 0.052, 0.014), cov.mul(0.55)) as unknown as NV3;
-    mat.colorNode = albedo;
-    mat.emissiveNode = grassTranslucency(albedo, t);
-    mat.aoNode = smoothstep(0.0, 0.55, t).mul(0.55).add(0.45);
+    mat.colorNode = varying(
+      albedo as unknown as Parameters<typeof varying>[0],
+    ) as unknown as typeof mat.colorNode;
+    mat.emissiveNode = varying(
+      grassTranslucency(albedo, t) as unknown as Parameters<typeof varying>[0],
+    ) as unknown as typeof mat.emissiveNode;
+    mat.aoNode = varying(
+      smoothstep(0.0, 0.55, t).mul(0.55).add(0.45) as unknown as Parameters<typeof varying>[0],
+    ) as unknown as typeof mat.aoNode;
     mat.roughness = 0.88;
     mat.metalness = 0;
     mat.side = DoubleSide;
