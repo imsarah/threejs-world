@@ -46,6 +46,42 @@ function start(): void {
   camera.position.set(0, world.heightAt(0, 0) + 1.6, 0);
 
   const controls = new WalkControls(camera, renderer.domElement, world.heightAt, world.bound);
+
+  // forced-landscape toggle: in-app browsers often lock to portrait, so a
+  // button rotates the canvas 90° (and WalkControls remaps touch input)
+  let forced = false;
+  const applyLayout = (): void => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const el = renderer.domElement;
+    if (forced) {
+      renderer.setSize(h, w); // swapped buffer; CSS-rotated to fill the viewport
+      camera.aspect = h / w;
+      el.style.position = 'fixed';
+      el.style.left = '50%';
+      el.style.top = '50%';
+      el.style.transformOrigin = 'center center';
+      el.style.transform = 'translate(-50%, -50%) rotate(90deg)';
+    } else {
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      el.style.position = '';
+      el.style.left = '';
+      el.style.top = '';
+      el.style.transform = '';
+      el.style.transformOrigin = '';
+    }
+    camera.updateProjectionMatrix();
+  };
+  applyLayout();
+
+  document.getElementById('rotate-btn')?.addEventListener('click', () => {
+    forced = !forced;
+    document.body.classList.toggle('force-landscape', forced);
+    controls.setRotation(forced);
+    applyLayout();
+  });
+
   const clock = new Clock();
 
   const loop = (): void => {
@@ -57,11 +93,8 @@ function start(): void {
   };
   requestAnimationFrame(loop);
 
-  addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+  addEventListener('resize', applyLayout);
+  addEventListener('orientationchange', applyLayout);
 }
 
 const probe = document.createElement('canvas').getContext('webgl2');

@@ -13,6 +13,10 @@ import type { PerspectiveCamera } from 'three';
 const MAX_PITCH = 1.4835; // ~85°
 const LOOK_SENS = 0.0026;
 const JOY_RADIUS = 64; // px to reach full speed
+const JUMP_SPEED = 7; // m/s — ~1.1 m jump
+const GRAVITY = 22; // m/s²
+const TAP_MS = 250; // a look touch shorter than this…
+const TAP_PX = 14; // …and moving less than this is a tap → jump
 
 export class WalkControls {
   private readonly euler = new Euler(0, 0, 0, 'YXZ');
@@ -25,7 +29,15 @@ export class WalkControls {
   private readonly joyStart = { x: 0, y: 0 };
   private readonly joy = { x: 0, y: 0 }; // -1..1 (x = strafe, y = forward)
   private readonly lookLast = { x: 0, y: 0 };
+  private readonly lookStart = { x: 0, y: 0 };
+  private lookStartT = 0;
   private mouseDown = false;
+  /** forced-landscape: canvas is CSS-rotated 90°, so remap touch coords */
+  private rotated = false;
+
+  // vertical (jump): airY is height above the ground clamp, vy its velocity
+  private vy = 0;
+  private airY = 0;
 
   private readonly eyeHeight = 1.6;
   private readonly speed = 4.2;
@@ -49,6 +61,7 @@ export class WalkControls {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    if (e.code === 'Space') this.jump();
     this.keys.add(e.key.toLowerCase());
   };
   private onKeyUp = (e: KeyboardEvent): void => {
@@ -70,20 +83,42 @@ export class WalkControls {
     this.mouseDown = false;
   };
 
+  // when the canvas is rotated 90° for forced-landscape, touch events still
+  // report unrotated viewport coords — map them into the rotated frame
+  private mapX(cx: number, cy: number): number {
+    return this.rotated ? cy : cx;
+  }
+  private mapY(cx: number, cy: number): number {
+    return this.rotated ? window.innerWidth - cx : cy;
+  }
+  /** logical screen width in the active frame (for the move/look half split) */
+  private vw(): number {
+    return this.rotated ? window.innerHeight : window.innerWidth;
+  }
+
+  setRotation(rotated: boolean): void {
+    this.rotated = rotated;
+  }
+
   private onTouchStart = (e: TouchEvent): void => {
     e.preventDefault();
-    const halfW = window.innerWidth / 2;
+    const halfW = this.vw() / 2;
     for (const t of Array.from(e.changedTouches)) {
-      if (t.clientX < halfW && this.moveId === null) {
+      const mx = this.mapX(t.clientX, t.clientY);
+      const my = this.mapY(t.clientX, t.clientY);
+      if (mx < halfW && this.moveId === null) {
         this.moveId = t.identifier;
-        this.joyStart.x = t.clientX;
-        this.joyStart.y = t.clientY;
+        this.joyStart.x = mx;
+        this.joyStart.y = my;
         this.joy.x = 0;
         this.joy.y = 0;
       } else if (this.lookId === null) {
         this.lookId = t.identifier;
-        this.lookLast.x = t.clientX;
-        this.lookLast.y = t.clientY;
+        this.lookLast.x = mx;
+        this.lookLast.y = my;
+        this.lookStart.x = mx;
+        this.lookStart.y = my;
+        this.lookStartT = performance.now();
       }
     }
   };
@@ -91,15 +126,15 @@ export class WalkControls {
   private onTouchMove = (e: TouchEvent): void => {
     e.preventDefault();
     for (const t of Array.from(e.changedTouches)) {
+      const mx = this.mapX(t.clientX, t.clientY);
+      const my = this.mapY(t.clientX, t.clientY);
       if (t.identifier === this.moveId) {
-        const dx = t.clientX - this.joyStart.x;
-        const dy = t.clientY - this.joyStart.y;
-        this.joy.x = Math.max(-1, Math.min(1, dx / JOY_RADIUS));
-        this.joy.y = Math.max(-1, Math.min(1, -dy / JOY_RADIUS));
+        this.joy.x = Math.max(-1, Math.min(1, (mx - this.joyStart.x) / JOY_RADIUS));
+        this.joy.y = Math.max(-1, Math.min(1, -(my - this.joyStart.y) / JOY_RADIUS));
       } else if (t.identifier === this.lookId) {
-        this.applyLook(t.clientX - this.lookLast.x, t.clientY - this.lookLast.y);
-        this.lookLast.x = t.clientX;
-        this.lookLast.y = t.clientY;
+        this.applyLook(mx - this.lookLast.x, my - this.lookLast.y);
+        this.lookLast.x = mx;
+        this.lookLast.y = my;
       }
     }
   };
@@ -111,6 +146,11 @@ export class WalkControls {
         this.joy.x = 0;
         this.joy.y = 0;
       } else if (t.identifier === this.lookId) {
+        // a quick, low-movement look touch is a tap → jump
+        const ex = this.mapX(t.clientX, t.clientY);
+        const ey = this.mapY(t.clientX, t.clientY);
+        const moved = Math.hypot(ex - this.lookStart.x, ey - this.lookStart.y);
+        if (performance.now() - this.lookStartT < TAP_MS && moved < TAP_PX) this.jump();
         this.lookId = null;
       }
     }
@@ -120,6 +160,10 @@ export class WalkControls {
     this.euler.y -= dx * LOOK_SENS;
     this.euler.x -= dy * LOOK_SENS;
     this.euler.x = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.euler.x));
+  }
+
+  private jump(): void {
+    if (this.airY <= 0.01) this.vy = JUMP_SPEED; // only when grounded
   }
 
   update(dt: number): void {
@@ -145,7 +189,12 @@ export class WalkControls {
     p.z += (this.fwd.z * mz + this.right.z * mx) * step;
     p.x = Math.max(-this.bound, Math.min(this.bound, p.x));
     p.z = Math.max(-this.bound, Math.min(this.bound, p.z));
-    p.y = this.heightAt(p.x, p.z) + this.eyeHeight;
+
+    // vertical jump arc above the ground clamp
+    this.vy -= GRAVITY * dt;
+    this.airY = Math.max(0, this.airY + this.vy * dt);
+    if (this.airY <= 0) this.vy = 0;
+    p.y = this.heightAt(p.x, p.z) + this.eyeHeight + this.airY;
 
     this.camera.quaternion.setFromEuler(this.euler);
   }

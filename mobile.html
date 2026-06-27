@@ -8,10 +8,11 @@
   </head>
   <body>
     <div id="app"></div>
-    <div id="hint">left half: move &middot; right half: look &middot; (desktop: WASD + drag)</div>
+    <div id="hint">left: move &middot; right: look &middot; tap: jump &middot; (desktop: WASD + drag + space)</div>
+    <button id="rotate-btn" type="button" aria-label="Rotate the view">&#10227;</button>
     <div id="rotate">
       <div class="icon">&#9112;</div>
-      <div class="msg">Rotate your device to landscape</div>
+      <div class="msg">Rotate your device to landscape —<br />or tap &#10227; (top-right) to rotate the view</div>
     </div>
     <script type="module" src="/src/mobile/main-mobile.ts"></script>
   </body>

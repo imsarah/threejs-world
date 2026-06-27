@@ -74,6 +74,32 @@ html, body {
   letter-spacing: 0.08em;
   opacity: 0.85;
 }
+/* persistent "rotate the view" button — escape hatch for portrait-locked
+   in-app browsers; toggles a 90° canvas rotation */
+#rotate-btn {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 40;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(12, 20, 18, 0.5);
+  color: #e6f0ea;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+/* once the view is force-rotated, drop the "rotate your device" prompt */
+body.force-landscape #rotate {
+  display: none !important;
+}
 @keyframes rot {
   0%, 60% { transform: rotate(0deg); }
   80%, 100% { transform: rotate(90deg); }
