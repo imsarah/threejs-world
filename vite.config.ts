@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 
 const entry = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(() => ({
   build: {
     target: "esnext",
     chunkSizeWarningLimit: 4096,
@@ -26,5 +26,7 @@ export default defineConfig(({ command }) => ({
   esbuild: {
     target: "esnext",
   },
-  base: command === "build" ? "/laas/" : "/",
+  // served from the domain root (Vercel). For a subpath deploy (e.g. GitHub
+  // Pages under /laas/), set this to that subpath instead.
+  base: "/",
 }));
