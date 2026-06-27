@@ -34,8 +34,8 @@ import {
   uint,
   vec2,
 } from 'three/tsl';
-import { valleyFields, type MacroParams } from '../../world/MacroMap';
-import { WORLD_SIZE } from '../../world/WorldConst';
+import { valleyFieldsMini, type MacroParams } from '../../world/MacroMap';
+import { MACRO_ZOOM, WORLD_SIZE } from '../../world/WorldConst';
 import { bilerpFloatBuffer } from '../BufferSample';
 import { hash12 } from '../noise/NoiseTSL';
 import type { NB, NF, NI, NU } from '../TSLTypes';
@@ -146,10 +146,11 @@ export async function runFlowRivers(
       .div(res)
       .sub(0.5)
       .mul(WORLD_SIZE);
-    const vf = valleyFields(wpos, opts.mp);
+    const vf = valleyFieldsMini(wpos, opts.mp);
     // fade enforcement across the lake exactly like the synthesis trench,
-    // otherwise we'd cut the outlet sill and drain the lake
-    const dLake = wpos.sub(vec2(opts.mp.lakeC[0], opts.mp.lakeC[1])).length();
+    // otherwise we'd cut the outlet sill and drain the lake. lakeC/lakeR are in
+    // design space, so compare against the zoomed (design-space) position.
+    const dLake = wpos.mul(MACRO_ZOOM).sub(vec2(opts.mp.lakeC[0], opts.mp.lakeC[1])).length();
     const tLake = smoothstep(opts.mp.lakeR, opts.mp.lakeR * 0.25, dLake);
     const trenchFade = smoothstep(0.5, 0.12, tLake);
     // V-profile: deepest at the centerline, rim allowance rises smoothly —

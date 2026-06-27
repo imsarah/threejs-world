@@ -38,7 +38,7 @@ import {
 } from 'three/tsl';
 import type { NF, NI, NV2, NV3 } from '../gpu/TSLTypes';
 import { windU } from '../render/Wind';
-import { WORLD_SIZE } from '../world/WorldConst';
+import { WORLD_SCALE, WORLD_SIZE } from '../world/WorldConst';
 import type { Atmosphere } from './Atmosphere';
 import { SUN_E } from './Atmosphere';
 
@@ -47,10 +47,10 @@ const DETAIL_RES = 32;
 const SHADOW_RES = 768;
 const WEATHER_RES = 512;
 /** weather field world span (m) — tiles beyond this, far past the playable area */
-const WEATHER_WORLD = 26000;
-/** cloud layer altitudes (m) — below the ~2000 m summits */
-export const CLOUD_BOTTOM = 1250;
-export const CLOUD_TOP = 1900;
+const WEATHER_WORLD = 26000 * WORLD_SCALE;
+/** cloud layer altitudes (m) — straddle the summits; scale with the world */
+export const CLOUD_BOTTOM = 1250 * WORLD_SCALE;
+export const CLOUD_TOP = 1900 * WORLD_SCALE;
 const SHADOW_WORLD = WORLD_SIZE * 1.6;
 
 export class Clouds {

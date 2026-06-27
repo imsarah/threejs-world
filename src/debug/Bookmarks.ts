@@ -15,6 +15,7 @@ import type { Engine } from '../core/Engine';
 import type { LaasHooks } from '../core/Hooks';
 import type { LaasParams } from '../core/Params';
 import type { Heightfield } from '../world/Heightfield';
+import { WORLD_SCALE } from '../world/WorldConst';
 
 export interface Bookmark {
   name: string;
@@ -27,8 +28,9 @@ export interface Bookmark {
   tod: number;
 }
 
-/** nine composed viewpoints — verified framings from the phase shots */
-export const BOOKMARKS: Bookmark[] = [
+/** nine composed viewpoints — verified framings from the phase shots.
+ *  Authored in the ±2048 design space; scaled into the miniature world below. */
+const RAW_BOOKMARKS: Bookmark[] = [
   { name: 'Gorge stream (scene1)', x: 620, z: 650, alt: 1.3, yaw: 0.5, pitch: -0.12, tod: 12.5 },
   { name: 'Dawn lake mist', x: 11, z: 1338, alt: 9, yaw: 1.2, pitch: -0.06, tod: 7.5 },
   { name: 'Golden vista (Witcher)', x: 1500, z: 1900, alt: 250, yaw: 0.65, pitch: -0.18, tod: 19 },
@@ -39,6 +41,14 @@ export const BOOKMARKS: Bookmark[] = [
   { name: 'Lakeshore golden', x: -1400, z: 1250, alt: 2.5, yaw: 3.14, pitch: -0.12, tod: 18.5 },
   { name: 'Valley network aerial', x: -600, z: 700, alt: 260, yaw: -0.6, pitch: -0.5, tod: 17.5 },
 ];
+
+/** design-space bookmarks scaled into the miniature world (x/z/alt × WORLD_SCALE) */
+export const BOOKMARKS: Bookmark[] = RAW_BOOKMARKS.map((b) => ({
+  ...b,
+  x: b.x * WORLD_SCALE,
+  z: b.z * WORLD_SCALE,
+  alt: b.alt * WORLD_SCALE,
+}));
 
 function poseY(hf: Heightfield, b: Bookmark): number {
   const ground = hf.heightAtCpu(b.x, b.z) + b.alt;
@@ -69,7 +79,7 @@ export function installBookmarks(
   const FLY_SECONDS = 92;
   // a tour that reads as one continuous shot: vista → descend the valley →
   // lake → meadow forest edge → gorge mouth → aerial pull-out
-  const TOUR: { x: number; z: number; alt: number; yaw: number; pitch: number }[] = [
+  const RAW_TOUR: { x: number; z: number; alt: number; yaw: number; pitch: number }[] = [
     { x: 1500, z: 1900, alt: 250, yaw: 0.65, pitch: -0.18 },
     { x: 900, z: 1500, alt: 120, yaw: 1.0, pitch: -0.12 },
     { x: 300, z: 1400, alt: 40, yaw: 1.35, pitch: -0.08 },
@@ -82,6 +92,13 @@ export function installBookmarks(
     { x: 900, z: 900, alt: 180, yaw: 5.6, pitch: -0.3 },
     { x: 1500, z: 1900, alt: 250, yaw: 0.65 + Math.PI * 2, pitch: -0.18 },
   ];
+  // scale the design-space tour waypoints into the miniature world
+  const TOUR = RAW_TOUR.map((w) => ({
+    ...w,
+    x: w.x * WORLD_SCALE,
+    z: w.z * WORLD_SCALE,
+    alt: w.alt * WORLD_SCALE,
+  }));
 
   class Flythrough {
     private active = false;

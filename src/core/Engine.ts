@@ -52,7 +52,9 @@ export class Engine {
       55,
       window.innerWidth / window.innerHeight,
       0.3,
-      30000,
+      // far clip sized for the miniature world (far vista ≈3.5 km) — tighter
+      // than the original 30 km for better depth precision near placed models
+      8000,
     );
     this.camera.position.set(0, 10, 30);
     this.stats = {

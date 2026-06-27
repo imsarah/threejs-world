@@ -38,8 +38,8 @@ import {
   PERIOD_VAL,
 } from '../gpu/passes/NoiseBake';
 import { sunU } from './VegMaterials';
-import { zoneMasks, type MacroParams } from '../world/MacroMap';
-import { LAKE_LEVEL, WORLD_HALF, WORLD_SIZE } from '../world/WorldConst';
+import { zoneMasksMini, type MacroParams } from '../world/MacroMap';
+import { LAKE_LEVEL, MACRO_ZOOM, WORLD_HALF, WORLD_SCALE, WORLD_SIZE } from '../world/WorldConst';
 
 export interface TerrainShadingInputs {
   /** rgba16f: xyz world normal, w slope */
@@ -136,8 +136,16 @@ export function buildTerrainShading(inp: TerrainShadingInputs): TerrainShading {
         wxz.abs().x.max(wxz.abs().y),
       )
     : float(0);
-  const snowProc = smoothstep(950, 1300, h.add(valS(620, 0.23, 0.57).mul(140)));
-  const vegProc = smoothstep(0.55, 0.28, slope).mul(smoothstep(1350, 900, h));
+  // height thresholds scale with the world; noise feature scales (620 m etc.)
+  // stay — they pair with the real-size vegetation kept at absolute scale.
+  const snowProc = smoothstep(
+    950 * WORLD_SCALE,
+    1300 * WORLD_SCALE,
+    h.add(valS(620, 0.23, 0.57).mul(140 * WORLD_SCALE)),
+  );
+  const vegProc = smoothstep(0.55, 0.28, slope).mul(
+    smoothstep(1350 * WORLD_SCALE, 900 * WORLD_SCALE, h),
+  );
   const rockProc = smoothstep(0.55, 0.95, slope);
   const snowField = mix(bio.g, snowProc, outsideK);
   const vegDensity = mix(bio.b, vegProc, outsideK);
@@ -145,7 +153,7 @@ export function buildTerrainShading(inp: TerrainShadingInputs): TerrainShading {
   const moisture = mix(fields.x, float(0.35), outsideK);
   const flowStrength = mix(fields.y, float(0), outsideK);
   const riverDepth = mix(fields.z, float(0), outsideK);
-  const zm = zoneMasks(wxz, inp.mp);
+  const zm = zoneMasksMini(wxz, inp.mp);
 
   // ---------- macro variation (2–50 m breakup — tiling killer) ----------------
   const macroA = val(43.7);
@@ -161,7 +169,9 @@ export function buildTerrainShading(inp: TerrainShadingInputs): TerrainShading {
   // rock: subtle strata banding; warm rust in the alpine zone, pale gray in
   // karst. Low contrast + heavy phase warp so it reads as geology, not zebra.
   const strataPhase = h
-    .mul(0.028)
+    // vertical band frequency: scale so the same number of strata bands span
+    // the (now shorter) face — keeps the geology looking identical.
+    .mul(0.028 * MACRO_ZOOM)
     .add(valS(74, 0.11, 0.83).mul(3.6))
     .add(valS(540, 0.43, 0.29).mul(2.4))
     .add(valS(27, 0.91, 0.07).mul(1.3)); // fine jitter fragments the bands
@@ -177,7 +187,7 @@ export function buildTerrainShading(inp: TerrainShadingInputs): TerrainShading {
   rockCol = mix(rockCol, alpRock, zm.tAlp.mul(0.85));
   // iron-oxide bands: dark rust layers at noise-chosen elevations (refs show
   // strong hue layering on alpine faces)
-  const ironPhase = band(h.mul(0.011), valS(800, 0.07, 0.93).mul(1.3).add(57.3));
+  const ironPhase = band(h.mul(0.011 * MACRO_ZOOM), valS(800, 0.07, 0.93).mul(1.3).add(57.3));
   const ironBand = smoothstep(0.45, 0.62, ironPhase).mul(smoothstep(0.85, 0.62, ironPhase));
   rockCol = mix(rockCol, vec3(0.3, 0.18, 0.12), ironBand.mul(zm.tAlp.mul(0.6).add(0.12)));
   // lichen/weathering: dark macro splotches on long-exposed faces
@@ -216,7 +226,7 @@ export function buildTerrainShading(inp: TerrainShadingInputs): TerrainShading {
   const rockW = smoothstep(0.62, 1.15, slope).max(rockExposure.mul(0.85)).toVar();
   const screeW = smoothstep(0.42, 0.62, slope)
     .mul(smoothstep(1.15, 0.7, slope))
-    .mul(smoothstep(380, 700, h))
+    .mul(smoothstep(380 * WORLD_SCALE, 700 * WORLD_SCALE, h))
     .mul(rockW.oneMinus());
   const grassW = smoothstep(0.5, 0.22, slope)
     .mul(vegDensity)
@@ -280,7 +290,7 @@ export function buildTerrainShading(inp: TerrainShadingInputs): TerrainShading {
   // value-noise pockets as ledge clumps. Karst gorges get the most.
   const wallK = smoothstep(0.62, 1.0, slope)
     .mul(smoothstep(0.12, 0.42, moisture.add(riverDepth.mul(2))))
-    .mul(smoothstep(1350, 700, h))
+    .mul(smoothstep(1350 * WORLD_SCALE, 700 * WORLD_SCALE, h))
     .mul(snowW.oneMinus())
     .mul(zm.tKarst.mul(0.45).add(0.55));
   const wallBands = smoothstep(0.38, 0.72, fbmV(7.3, 0.13, 0.49));
@@ -292,7 +302,7 @@ export function buildTerrainShading(inp: TerrainShadingInputs): TerrainShading {
   col = mix(col, wallGreen, wallVeg);
 
   // wet darkening: river margins, lake shores, marshes
-  const shoreWet = smoothstep(LAKE_LEVEL + 2.5, LAKE_LEVEL + 0.3, h);
+  const shoreWet = smoothstep(LAKE_LEVEL + 2.5 * WORLD_SCALE, LAKE_LEVEL + 0.3 * WORLD_SCALE, h);
   const wet = clamp(
     smoothstep(0.55, 0.95, moisture).mul(0.5).add(riverDepth.mul(2)).add(shoreWet.mul(0.6)),
     0,

@@ -30,7 +30,13 @@ import {
 } from 'three/tsl';
 import type { Rng, WorldSeed } from '../core/Seed';
 import type { NF, NV2 } from '../gpu/TSLTypes';
-import { KARST_PLATEAU, LAKE_LEVEL, WORLD_HALF } from './WorldConst';
+import {
+  KARST_PLATEAU_DESIGN,
+  LAKE_LEVEL_DESIGN,
+  MACRO_ZOOM,
+  WORLD_HALF_DESIGN,
+  WORLD_SCALE,
+} from './WorldConst';
 
 export interface MacroParams {
   alpC: [number, number];
@@ -274,7 +280,7 @@ export function macroTerrain(p: NV2, mp: MacroParams, detail: 'full' | 'far'): M
   const hillsMask = tAlp.oneMinus().mul(tKarst.mul(0.72).oneMinus());
   const base = float(192)
     .add(hillsN.mul(135).mul(hillsMask))
-    .add(float(KARST_PLATEAU - 192).mul(tKarst))
+    .add(float(KARST_PLATEAU_DESIGN - 192).mul(tKarst))
     .sub(tLake.pow(1.5).mul(110));
 
   // --- alpine ridges (anisotropic, serrated) ---------------------------------
@@ -334,7 +340,7 @@ export function macroTerrain(p: NV2, mp: MacroParams, detail: 'full' | 'far'): M
   // --- far shell: outer ranges beyond the world edge --------------------------
   if (!full) {
     const r = max(abs(p.x), abs(p.y));
-    const band = smoothstep(WORLD_HALF + 600, 5200, r).mul(smoothstep(13500, 7600, r));
+    const band = smoothstep(WORLD_HALF_DESIGN + 600, 5200, r).mul(smoothstep(13500, 7600, r));
     const pf = p.div(2600).add(vec2(o.far[0], o.far[1]));
     let outer: NF = float(0);
     let amp = 0.5;
@@ -375,7 +381,7 @@ export function macroTerrain(p: NV2, mp: MacroParams, detail: 'full' | 'far'): M
   }
 
   // keep the lake basin genuinely below lake level (tight to the basin core)
-  const lakeBed = float(LAKE_LEVEL - 13);
+  const lakeBed = float(LAKE_LEVEL_DESIGN - 13);
   h = h.sub(max(0, h.sub(lakeBed)).mul(tLake.pow(3.4).mul(0.95)));
 
   // --- hardness (erosion resistance + later: strata/talus behavior) -----------
@@ -403,5 +409,40 @@ export function macroTerrain(p: NV2, mp: MacroParams, detail: 'full' | 'far'): M
     tribDist,
     valleyFloor: vf.valleyFloor,
     hardness,
+  };
+}
+
+// --- miniature wrappers -----------------------------------------------------
+// The macro graph above is authored in a ±WORLD_HALF_DESIGN design space. To
+// reproduce the WHOLE composition inside the shrunken world we sample it at a
+// zoomed position (×MACRO_ZOOM) and scale the returned HEIGHTS/DISTANCES by
+// WORLD_SCALE — i.e. H_mini(p) = WORLD_SCALE·H(MACRO_ZOOM·p). This is a true
+// uniform scale (slopes preserved). Dimensionless outputs (the 0..1 zone masks
+// and hardness) are left untouched. Callers operating in real (mini) world
+// meters should use these instead of the raw functions.
+
+export function macroTerrainMini(p: NV2, mp: MacroParams, detail: 'full' | 'far'): MacroNodes {
+  const m = macroTerrain(p.mul(MACRO_ZOOM), mp, detail);
+  return {
+    ...m,
+    height: m.height.mul(WORLD_SCALE),
+    valleyDist: m.valleyDist.mul(WORLD_SCALE),
+    tribDist: m.tribDist.mul(WORLD_SCALE),
+    valleyFloor: m.valleyFloor.mul(WORLD_SCALE),
+  };
+}
+
+export function zoneMasksMini(p: NV2, mp: MacroParams): ZoneMasks {
+  // masks are 0..1 falloffs — only the sample position needs zooming
+  return zoneMasks(p.mul(MACRO_ZOOM), mp);
+}
+
+export function valleyFieldsMini(p: NV2, mp: MacroParams): ValleyFields {
+  const v = valleyFields(p.mul(MACRO_ZOOM), mp);
+  return {
+    valleyDist: v.valleyDist.mul(WORLD_SCALE),
+    valleyFloor: v.valleyFloor.mul(WORLD_SCALE),
+    tribDist: v.tribDist.mul(WORLD_SCALE),
+    tribFloor: v.tribFloor.mul(WORLD_SCALE),
   };
 }

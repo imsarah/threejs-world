@@ -24,6 +24,7 @@ import { Heightfield } from '../world/Heightfield';
 import { buildTerrainShadowProxy } from '../world/ShadowProxy';
 import { TerrainTiles } from '../world/TerrainTiles';
 import { WaterSurface } from '../world/WaterSurface';
+import { WORLD_SCALE } from '../world/WorldConst';
 import { PostStack } from '../render/PostStack';
 import { setupSunShadows } from '../render/ShadowSetup';
 import { Clouds } from '../sky/Clouds';
@@ -268,8 +269,8 @@ export async function buildTerrainScene(ctx: WorldContext): Promise<void> {
   const alt = Number(q.get('alt') ?? NaN);
   if (params.cam === null) {
     if (Number.isFinite(alt)) {
-      const x = Number(q.get('x') ?? 600);
-      const z = Number(q.get('z') ?? 900);
+      const x = Number(q.get('x') ?? 600 * WORLD_SCALE);
+      const z = Number(q.get('z') ?? 900 * WORLD_SCALE);
       const yaw = Number(q.get('yaw') ?? 2.4); // rad; 0 = looking −z (north)
       const pitch = Number(q.get('pitch') ?? -0.04); // rad; negative = down
       const y = hf.heightAtCpu(x, z) + alt;

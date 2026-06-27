@@ -53,7 +53,7 @@ import type { Atmosphere } from '../../sky/Atmosphere';
 import type { Heightfield } from '../../world/Heightfield';
 import { sunU } from '../../render/VegMaterials';
 import { windU } from '../../render/Wind';
-import { WORLD_SIZE } from '../../world/WorldConst';
+import { WORLD_SCALE, WORLD_SIZE } from '../../world/WorldConst';
 import { PERIOD_FBM } from './NoiseBake';
 import { canopyAt } from './Scatter';
 import { hash13 } from '../noise/NoiseTSL';
@@ -141,8 +141,10 @@ export class Froxels {
       // ground-hug dominates and hugs LOW; the old broad altitude blanket
       // (=1 below 120 m, i.e. everywhere) made fog global instead of
       // pooling in wet valleys
-      const rhoGround = exp(hAbove.div(-20));
-      const rhoAlt = exp(p.y.sub(120).max(0).div(-140));
+      // altitude-driven falloffs scale with the world so fog still hugs the
+      // ground and pools in the (now shorter) valleys instead of going global
+      const rhoGround = exp(hAbove.div(-20 * WORLD_SCALE));
+      const rhoAlt = exp(p.y.sub(120 * WORLD_SCALE).max(0).div(-140 * WORLD_SCALE));
       // moisture-SELECTIVE: m² with a small floor — dry slopes stay clear,
       // hydrology basins keep their mist
       const moistK = moisture.mul(moisture).mul(1.5).add(0.25);
@@ -157,9 +159,11 @@ export class Froxels {
       // --- sun visibility --------------------------------------------------------
       const vis = float(1).toVar();
       // terrain horizon: log-spaced probes along the sun ray
-      for (const dSun of [12, 30, 75, 180, 420]) {
+      for (const dSun of [12, 30, 75, 180, 420].map((d) => d * WORLD_SCALE)) {
         const q = p.add(sunDirN.mul(dSun));
-        vis.mulAssign(smoothstep(-10, 2, q.y.sub(hf.sampleHeightNearest(q.xz))));
+        vis.mulAssign(
+          smoothstep(-10 * WORLD_SCALE, 2 * WORLD_SCALE, q.y.sub(hf.sampleHeightNearest(q.xz))),
+        );
       }
       if (canopyTex) {
         // crown slab pierce point: gaps in the canopy map become shafts

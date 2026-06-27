@@ -49,8 +49,8 @@ import {
 import { DISP, buildTerrainShading } from '../render/TerrainMaterial';
 import { PERIOD_FBM, PERIOD_RID, PERIOD_VAL } from '../gpu/passes/NoiseBake';
 import type { Heightfield } from './Heightfield';
-import { macroTerrain } from './MacroMap';
-import { FAR_RADIUS, WORLD_HALF, WORLD_SIZE } from './WorldConst';
+import { macroTerrainMini } from './MacroMap';
+import { FAR_RADIUS, WORLD_HALF, WORLD_SCALE, WORLD_SIZE } from './WorldConst';
 
 const MAX_TILES = 2048;
 const PATCH_SEGS = 64;
@@ -333,7 +333,7 @@ export class TerrainTiles {
     const farMat = new MeshPhysicalNodeMaterial();
     farMat.specularIntensity = 0.35;
     const fxz = positionLocal.xz;
-    const farMacro = macroTerrain(fxz, hf.mp, 'far');
+    const farMacro = macroTerrainMini(fxz, hf.mp, 'far');
     const baked = hf.sampleHeight(fxz);
     const edgeBlend = clamp(
       fxz.abs().x.max(fxz.abs().y).sub(WORLD_HALF * 0.95).div(WORLD_HALF * 0.05),
@@ -343,14 +343,17 @@ export class TerrainTiles {
     // sit well below the tile mesh inside the world (coarse far tiles deviate
     // several meters — the shell poked through and showed far-mode shading)
     const farH = mix(baked, farMacro.height, edgeBlend).sub(
-      mix(float(9), float(2.5), edgeBlend),
+      mix(float(9 * WORLD_SCALE), float(2.5 * WORLD_SCALE), edgeBlend),
     );
     farMat.positionNode = vec3(fxz.x, farH, fxz.y);
     // analytic per-vertex normal (no baked maps beyond the world edge):
-    // finite-difference the far macro height, interpolated via varying
-    const eN = 60;
-    const hX = macroTerrain(fxz.add(vec2(eN, 0)), hf.mp, 'far').height;
-    const hZ = macroTerrain(fxz.add(vec2(0, eN)), hf.mp, 'far').height;
+    // finite-difference the far macro height, interpolated via varying.
+    // eN is a real (mini) step so the normal matches the full-size world:
+    // macroTerrainMini scales height ×WORLD_SCALE, so a step of 60·WORLD_SCALE
+    // probes the same design-space distance as the original eN=60.
+    const eN = 60 * WORLD_SCALE;
+    const hX = macroTerrainMini(fxz.add(vec2(eN, 0)), hf.mp, 'far').height;
+    const hZ = macroTerrainMini(fxz.add(vec2(0, eN)), hf.mp, 'far').height;
     const farNormal = vec3(farMacro.height.sub(hX), float(eN), farMacro.height.sub(hZ))
       .normalize();
     const farSlope = vec2(farMacro.height.sub(hX), farMacro.height.sub(hZ))

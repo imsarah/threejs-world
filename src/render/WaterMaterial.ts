@@ -68,7 +68,7 @@ import type { ProbeGI } from '../gpu/passes/ProbeGI';
 import type { NF, NI, NV2, NV3, NV4 } from '../gpu/TSLTypes';
 import type { Atmosphere } from '../sky/Atmosphere';
 import type { Heightfield } from '../world/Heightfield';
-import { WORLD_HALF } from '../world/WorldConst';
+import { WORLD_HALF, WORLD_SIZE } from '../world/WorldConst';
 
 /** clear alpine water: absorption per meter (r dies first → teal depths) */
 const SIGMA = { r: 0.42, g: 0.135, b: 0.095 };
@@ -124,7 +124,7 @@ export function waterMaterial(
 
   // ---- flow field --------------------------------------------------------------
   const simRes = hf.simRes;
-  const g = clamp(positionWorld.xz.div(4096).add(0.5), 0, 1).mul(simRes).sub(0.5);
+  const g = clamp(positionWorld.xz.div(WORLD_SIZE).add(0.5), 0, 1).mul(simRes).sub(0.5);
   const flowV = bilerpVec2Buffer(flow.flowDir, simRes, g);
   const spd = flowV.length();
   const fdir = flowV.div(spd.max(1e-4));

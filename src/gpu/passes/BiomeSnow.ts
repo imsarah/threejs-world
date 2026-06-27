@@ -28,8 +28,15 @@ import {
   vec2,
   vec4,
 } from 'three/tsl';
-import { zoneMasks, type MacroParams } from '../../world/MacroMap';
-import { Biome, LAKE_LEVEL, TREELINE, WORLD_SIZE } from '../../world/WorldConst';
+import { zoneMasksMini, type MacroParams } from '../../world/MacroMap';
+import {
+  Biome,
+  LAKE_LEVEL,
+  MACRO_ZOOM,
+  TREELINE,
+  WORLD_SCALE,
+  WORLD_SIZE,
+} from '../../world/WorldConst';
 import type { FloatBuffer } from './HeightSynthesis';
 
 export interface BiomeSnowOpts {
@@ -61,6 +68,10 @@ export async function runBiomeSnow(
     const y = i.div(res);
     const uv = vec2(float(x).add(0.5), float(y).add(0.5)).div(res);
     const wpos = uv.sub(0.5).mul(WORLD_SIZE);
+    // design-space position: macro-correlated noise wavelengths are authored
+    // for the ±2048 design space, so sample them at the zoomed position to keep
+    // the miniature looking identical to the full-size world.
+    const wposD = wpos.mul(MACRO_ZOOM);
     const h = height.element(i).toVar();
     const ns = texture(opts.normalTex, uv);
     const n = ns.xyz;
@@ -68,16 +79,17 @@ export async function runBiomeSnow(
     const fields = texture(opts.fieldsTex, uv);
     const moisture = fields.x;
     const water = fields.z;
-    const zm = zoneMasks(wpos, mp);
+    const zm = zoneMasksMini(wpos, mp);
 
     // temperature: lapse with altitude; north faces colder; noise breakup.
     // "north" is −z; aspect cooling scales with slope.
     const northness = n.z.negate().mul(clamp(slope, 0, 1)).clamp(0, 1);
-    const tNoise = mx_noise_float(wpos.div(420).add(vec2(mp.off.hard[0], mp.off.hard[1])));
-    // calibrated (measured via ?view=bioR): onset ≈ 750 m, full ≈ ~1150 m —
-    // deep snow zone covers the upper half of the massif like the reference
+    const tNoise = mx_noise_float(wposD.div(420).add(vec2(mp.off.hard[0], mp.off.hard[1])));
+    // calibrated for the full world: onset ≈ 750 m, full ≈ ~1150 m (design m).
+    // heights are scaled by WORLD_SCALE, so the lapse rate scales by MACRO_ZOOM
+    // to keep the same snow band on the (now shorter) massif.
     const temp = float(11.8)
-      .sub(h.mul(0.0125))
+      .sub(h.mul(0.0125 * MACRO_ZOOM))
       .sub(northness.mul(2.0))
       .add(tNoise.mul(1.2));
 
@@ -94,7 +106,11 @@ export async function runBiomeSnow(
     const hd = height.element(idx(x, y.sub(stepT)));
     const hu = height.element(idx(x, y.add(stepT)));
     const lap = hl.add(hr).add(hd).add(hu).sub(h.mul(4)).div(stepT * stepT); // concave > 0
-    const ledge = smoothstep(0.08, 0.5, lap).mul(smoothstep(0.9, 0.35, slope));
+    // curvature (1/length) scales by MACRO_ZOOM under uniform shrink, so the
+    // lap thresholds scale to match; slope is invariant → its thresholds stay.
+    const ledge = smoothstep(0.08 * MACRO_ZOOM, 0.5 * MACRO_ZOOM, lap).mul(
+      smoothstep(0.9, 0.35, slope),
+    );
 
     // COARSE slope (16 m support): texel-scale crags make the 1 m slope ≥2.7
     // everywhere on the massif — snow holds on the landform, not the micro-relief
@@ -107,7 +123,7 @@ export async function runBiomeSnow(
     // coarse concavity: couloirs/gullies between rock ribs accumulate snow —
     // this is what makes very steep massifs read snowy (white veins in crags)
     const lapCoarse = cl.add(cr).add(cd).add(cu).sub(h.mul(4)).div(s8 * s8 * texel);
-    const couloir = smoothstep(0.015, 0.16, lapCoarse);
+    const couloir = smoothstep(0.015 * MACRO_ZOOM, 0.16 * MACRO_ZOOM, lapCoarse);
 
     // --- snow coverage ---------------------------------------------------------
     const snowTemp = smoothstep(2.6, -2.2, temp); // cold → 1
@@ -130,19 +146,21 @@ export async function runBiomeSnow(
     );
 
     // --- biome decision tree -----------------------------------------------------
-    const isAlpine = h.greaterThan(float(TREELINE).add(tNoise.mul(60)));
-    const isSubalpine = h.greaterThan(float(TREELINE - 170).add(tNoise.mul(70)));
+    const isAlpine = h.greaterThan(float(TREELINE).add(tNoise.mul(60 * WORLD_SCALE)));
+    const isSubalpine = h.greaterThan(
+      float(TREELINE - 170 * WORLD_SCALE).add(tNoise.mul(70 * WORLD_SCALE)),
+    );
     const lowFlat = slope.lessThan(0.35);
     const isWetland = moisture
       .greaterThan(0.72)
       .and(lowFlat)
-      .and(h.lessThan(LAKE_LEVEL + 70));
-    const meadowNoise = mx_noise_float(wpos.div(560).add(vec2(mp.off.hills[0], mp.off.hills[1])));
+      .and(h.lessThan(LAKE_LEVEL + 70 * WORLD_SCALE));
+    const meadowNoise = mx_noise_float(wposD.div(560).add(vec2(mp.off.hills[0], mp.off.hills[1])));
     const isMeadow = meadowNoise
       .greaterThan(0.22)
       .and(slope.lessThan(0.42))
       .and(moisture.lessThan(0.72))
-      .and(h.lessThan(520))
+      .and(h.lessThan(520 * WORLD_SCALE))
       .and(zm.tKarst.lessThan(0.4));
     const isKarst = zm.tKarst.greaterThan(0.42);
 
