@@ -1,9 +1,19 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+
+const entry = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
 
 export default defineConfig(({ command }) => ({
   build: {
     target: "esnext",
     chunkSizeWarningLimit: 4096,
+    rollupOptions: {
+      // two entries: the WebGPU desktop app and the lightweight WebGL2 mobile scene
+      input: {
+        main: entry("./index.html"),
+        mobile: entry("./mobile.html"),
+      },
+    },
   },
   server: {
     // no fixed port — Vite picks the first free port (default 5173, then

@@ -1,0 +1,122 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #06080a;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+}
+#app {
+  position: fixed;
+  inset: 0;
+}
+#app canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+#boot {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #8aa39b;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+  z-index: 10;
+}
+#boot .title {
+  font-size: 22px;
+  color: #c8d8d0;
+  margin-bottom: 14px;
+  letter-spacing: 0.35em;
+}
+#boot .bar {
+  width: 260px;
+  height: 2px;
+  background: #1a2420;
+  margin-top: 16px;
+  position: relative;
+  overflow: hidden;
+}
+#boot .bar > div {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  background: #5fae8f;
+  transition: width 0.2s ease;
+}
+#chooser {
+  position: fixed;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #c8d8d0;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  z-index: 20;
+}
+#chooser .title {
+  font-size: 26px;
+  letter-spacing: 0.35em;
+  color: #c8d8d0;
+}
+#chooser .sub {
+  font-size: 11px;
+  color: #6f8a82;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin: 8px 0 28px;
+}
+#chooser .btns {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+#chooser button {
+  width: 210px;
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  background: #0e1413;
+  border: 1px solid #243430;
+  border-radius: 10px;
+  color: #c8d8d0;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+#chooser button:hover {
+  border-color: #5fae8f;
+  background: #121a18;
+}
+#chooser button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: #243430;
+  background: #0e1413;
+}
+#chooser button:disabled:hover {
+  border-color: #243430;
+  background: #0e1413;
+}
+#chooser .b-title {
+  font-size: 17px;
+  letter-spacing: 0.12em;
+}
+#chooser .b-sub {
+  font-size: 11px;
+  color: #6f8a82;
+  letter-spacing: 0.05em;
+}

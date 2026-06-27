@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "PROJECT LAAS — fully procedural open world in the browser (WebGPU)",
+  "description": "threejs-world — procedural open world in the browser (WebGPU), built on LAAS",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

@@ -64,7 +64,7 @@ export function browserGate(): boolean {
 
   if (isMobileDevice()) {
     failLoud('A computer is required', [
-      'LAAS pushes desktop-class GPU work through WebGPU — phone and tablet',
+      'threejs-world pushes desktop-class GPU work through WebGPU — phone and tablet',
       'browsers are not supported.',
       '',
       'Please revisit from a desktop or laptop running Google Chrome.',
@@ -74,7 +74,7 @@ export function browserGate(): boolean {
 
   if (!isChromiumBrowser()) {
     failLoud('Google Chrome is required', [
-      'LAAS is built and tested against Chrome’s WebGPU implementation.',
+      'threejs-world is built and tested against Chrome’s WebGPU implementation.',
       'Safari and Firefox currently cannot run it.',
       '',
       'Please open this page in Google Chrome 113 or newer.',

@@ -1,7 +1,7 @@
-/** LAAS entry point — boot sequence with fail-loud diagnostics. */
+/** threejs-world entry point — boot sequence with fail-loud diagnostics. */
 
 import { BootUI } from './core/BootUI';
-import { browserGate } from './core/BrowserGate';
+import { browserGate, isMobileDevice } from './core/BrowserGate';
 import {
   describeDiagnostics,
   failLoud,
@@ -33,7 +33,7 @@ async function boot(): Promise<void> {
   const diag = await probeWebGPU();
   hooks.diag = diag;
   if (!diag.ok) {
-    failLoud('WebGPU unavailable — LAAS has no fallback by design', [
+    failLoud('WebGPU unavailable — threejs-world has no fallback by design', [
       diag.reason ?? 'unknown reason',
       '',
       'Chrome exposes WebGPU here, but no usable GPU adapter came up. Check:',
@@ -105,7 +105,38 @@ async function boot(): Promise<void> {
   console.log('[laas] ready');
 }
 
-boot().catch((e: unknown) => {
-  const msg = e instanceof Error ? `${e.message}\n\n${e.stack ?? ''}` : String(e);
-  failLoud('Boot failed', [msg]);
-});
+function runBoot(): void {
+  boot().catch((e: unknown) => {
+    const msg = e instanceof Error ? `${e.message}\n\n${e.stack ?? ''}` : String(e);
+    failLoud('Boot failed', [msg]);
+  });
+}
+
+// Bare homepage → offer a Desktop/Mobile chooser. Deep links and the
+// screenshot tooling always carry a query string (?scene=, ?cam=, ?shot=,
+// ?nogate=…), so those boot straight into the desktop app as before.
+const bareHome = window.location.search === '' && window.location.hash === '';
+const chooser = document.getElementById('chooser');
+const bootOverlay = document.getElementById('boot');
+if (bareHome && chooser) {
+  if (bootOverlay) bootOverlay.style.display = 'none';
+  chooser.style.display = 'flex';
+  const desktopBtn = document.getElementById('choose-desktop') as HTMLButtonElement | null;
+  // the desktop world is WebGPU + desktop-only — disable it on phones/tablets
+  if (isMobileDevice() && desktopBtn) {
+    desktopBtn.disabled = true;
+    const sub = desktopBtn.querySelector('.b-sub');
+    if (sub) sub.textContent = 'needs a computer with WebGPU';
+  } else {
+    desktopBtn?.addEventListener('click', () => {
+      chooser.style.display = 'none';
+      if (bootOverlay) bootOverlay.style.display = 'flex';
+      runBoot();
+    });
+  }
+  document.getElementById('choose-mobile')?.addEventListener('click', () => {
+    window.location.href = './mobile.html';
+  });
+} else {
+  runBoot();
+}
