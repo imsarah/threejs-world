@@ -60,6 +60,12 @@ Desktop controls: click to capture the mouse. WASD to move, Shift to sprint, Spa
 
 Useful URL parameters: `?seed=N` (world seed), `?T=hours` (time of day, 0–24), `?shot=1..9` (boot into a bookmark), `?cam=x,y,z,yaw,pitch[,fov]` (exact pose), `?preset=low|high|ultra`, `?freeze=1` (freeze world motion), `?hud=1` (HUD open at boot).
 
+## Deploying
+
+`npm run build` produces a static site in `dist/`, so any static host works. Asset URLs are served from the domain root — `base` is `/` in [vite.config.ts](vite.config.ts); for a subpath deploy (e.g. GitHub Pages under `/laas/`) set it to that subpath instead.
+
+**Vercel:** import the repo and set Framework Preset **Vite**, Build Command **`npm run build`**, Output Directory **`dist`** (or run `vercel --prod` from the project root). Two static pages ship — `/` (the Desktop/Mobile chooser) and `/mobile.html` (the mobile scene) — so no rewrites are needed. Vercel serves over HTTPS, which satisfies WebGPU's secure-context requirement, so the desktop world runs in desktop Chrome; phone visitors get the mobile scene.
+
 ## Repository map
 
 | Path | What it is |

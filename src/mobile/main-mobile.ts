@@ -34,6 +34,9 @@ function start(): void {
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.15;
   renderer.outputColorSpace = SRGBColorSpace;
+  // claim touch gestures on the canvas itself — in-app browsers hijack
+  // vertical drags (scroll / pull-to-dismiss) unless the element opts out
+  renderer.domElement.style.touchAction = 'none';
   app.appendChild(renderer.domElement);
 
   const camera = new PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 600);

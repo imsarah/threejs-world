@@ -5,7 +5,14 @@ html, body {
   height: 100%;
   overflow: hidden;
   background: #9fb8c8;
+  /* claim all touch gestures: in-app browsers/WebViews otherwise steal
+     vertical drags for scroll / pull-to-dismiss, killing pitch (X rotation) */
+  touch-action: none;
+  overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 #app {
   position: fixed;
@@ -16,6 +23,9 @@ html, body {
   display: block;
   width: 100%;
   height: 100%;
+  /* not inherited from #app — the canvas is where touches land, so it needs
+     its own touch-action or the host browser handles vertical drags */
+  touch-action: none;
 }
 #hint {
   position: fixed;
