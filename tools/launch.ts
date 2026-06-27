@@ -27,7 +27,7 @@ const CANDIDATES: LaunchRecipe[] = [
 ];
 
 const CACHE_PATH = '.cache/webgpu-flags.json';
-const PROBE_BASE = 'http://localhost:5173';
+const PROBE_BASE = 'http://localhost:5174';
 
 async function probeRecipe(recipe: LaunchRecipe): Promise<Browser | null> {
   let browser: Browser | null = null;
@@ -96,7 +96,7 @@ export interface LaasPageOptions {
   extra?: Record<string, string>;
 }
 
-export function laasUrl(opts: LaasPageOptions, base = 'http://localhost:5173/'): string {
+export function laasUrl(opts: LaasPageOptions, base = 'http://localhost:5174/'): string {
   const q = new URLSearchParams();
   if (opts.scene) q.set('scene', opts.scene);
   if (opts.seed !== undefined) q.set('seed', String(opts.seed));
